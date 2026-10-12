@@ -394,30 +394,38 @@ fun AdminRecipesTab(
                                 null
                             } else if (draft.sourceType == "RAW") {
                                 val material = rawMaterials.firstOrNull { it.id == draft.sourceId }
-                                    ?: return@Button.also { recipeError = "اختر مادة خام صالحة لكل مكوّن" }
-                                RecipeItemEntity(
-                                    recipeId = "",
-                                    rawMaterialId = material.id,
-                                    mixtureId = "",
-                                    name = material.name,
-                                    amount = amount,
-                                    quantity = amount,
-                                    unit = material.baseUnit,
-                                    costContribution = material.avgCostPerUnit * amount
-                                )
+                                if (material == null) {
+                                    recipeError = "اختر مادة خام صالحة لكل مكوّن"
+                                    null
+                                } else {
+                                    RecipeItemEntity(
+                                        recipeId = "",
+                                        rawMaterialId = material.id,
+                                        mixtureId = "",
+                                        name = material.name,
+                                        amount = amount,
+                                        quantity = amount,
+                                        unit = material.baseUnit,
+                                        costContribution = material.avgCostPerUnit * amount
+                                    )
+                                }
                             } else {
                                 val mixture = mixtures.firstOrNull { it.id == draft.sourceId }
-                                    ?: return@Button.also { recipeError = "اختر خلطة صالحة لكل مكوّن" }
-                                RecipeItemEntity(
-                                    recipeId = "",
-                                    rawMaterialId = "",
-                                    mixtureId = mixture.id,
-                                    name = mixture.name,
-                                    amount = amount,
-                                    quantity = amount,
-                                    unit = mixture.unit,
-                                    costContribution = mixture.unitCost * amount
-                                )
+                                if (mixture == null) {
+                                    recipeError = "اختر خلطة صالحة لكل مكوّن"
+                                    null
+                                } else {
+                                    RecipeItemEntity(
+                                        recipeId = "",
+                                        rawMaterialId = "",
+                                        mixtureId = mixture.id,
+                                        name = mixture.name,
+                                        amount = amount,
+                                        quantity = amount,
+                                        unit = mixture.unit,
+                                        costContribution = mixture.unitCost * amount
+                                    )
+                                }
                             }
                         }
                         when {
