@@ -24,7 +24,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val sessionManager: SessionManager = SessionManager()
 
     val costEngine = CostEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao())
-    val inventoryEngine = InventoryEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao(), db.inventoryTransactionDao())
+    val inventoryEngine = InventoryEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao(), db.inventoryTransactionDao(), db.productDao())
     val salesEngine = SalesEngine(db, inventoryEngine)
     val shiftEngine = ShiftEngine(db)
     val purchaseEngine = PurchaseEngine(db, inventoryEngine)
