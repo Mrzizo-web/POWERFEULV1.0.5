@@ -85,7 +85,7 @@ class GatewayServerSecurityAndroidTest {
     fun httpServerAcceptsValidHmacAndRejectsReplay() {
         val eventId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis().toString()
-        val signature = GatewayRequestSigner.sign(token, timestamp, eventId, deviceId, "")
+        val signature = GatewayRequestSigner.sign(token, "GET", "/api/status", timestamp, eventId, deviceId, "")
         val headers = mapOf(
             GatewayRequestSigner.DEVICE_ID_HEADER to deviceId,
             GatewayRequestSigner.EVENT_ID_HEADER to eventId,
