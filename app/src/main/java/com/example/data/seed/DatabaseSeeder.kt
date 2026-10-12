@@ -10,8 +10,8 @@ object DatabaseSeeder {
         // Ensure an owner account exists even if an earlier launch skipped seeding.
         val ownerId = "user-owner-ziad"
         val existingOwner = db.userDao().getUserById(ownerId)
-        val activeOwnerCount = db.userDao().countActiveOwners()
-        if (existingOwner == null && activeOwnerCount == 0) {
+        val existingUserCount = db.userDao().countUsers()
+        if (existingOwner == null && existingUserCount == 0) {
             // Never ship or seed a universal PIN. The first login screen guides the
             // owner through choosing a 4-6 digit PIN, which is salted and hashed
             // before the session is opened.

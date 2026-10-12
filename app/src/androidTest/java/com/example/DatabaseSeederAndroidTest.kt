@@ -67,4 +67,26 @@ class DatabaseSeederAndroidTest {
         assertEquals(1, db.userDao().countUsers())
         assertTrue(PasswordHasher.DEFAULT.verify(customCredential, owner.pinSalt, owner.pinHash))
     }
+    @Test
+    fun seedingDoesNotCreateANewOwnerWhenExistingUsersArePresent() = runBlocking {
+        db.userDao().insertUser(
+            UserEntity(
+                id = "existing-cashier",
+                name = "موظف قديم",
+                username = "existing_cashier",
+                pinHash = "preexisting-hash",
+                pinSalt = "preexisting-salt",
+                role = UserRole.CASHIER,
+                isActive = true
+            )
+        )
+
+        DatabaseSeeder.seedIfNeeded(db)
+
+        assertEquals(1, db.userDao().countUsers())
+        assertEquals(null, db.userDao().getUserById("user-owner-ziad"))
+        assertEquals(0, db.userDao().countActiveOwners())
+        assertEquals("preexisting-hash", db.userDao().getUserById("existing-cashier")!!.pinHash)
+    }
+
 }
