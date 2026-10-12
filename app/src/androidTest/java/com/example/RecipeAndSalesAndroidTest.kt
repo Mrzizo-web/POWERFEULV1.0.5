@@ -299,4 +299,84 @@ class RecipeAndSalesAndroidTest {
         assertEquals(500.0, db.rawMaterialDao().getRawMaterialById(oats.id)!!.currentStock, 0.001)
     }
 
+    @Test
+    fun debtSaleVoidReversesCustomerBalanceAndShiftTotals() = runBlocking {
+        val customer = CustomerEntity(
+            id = "void-debt-customer",
+            name = "عميل اختبار إلغاء الدين",
+            creditLimit = 1000.0,
+            currentDebt = 0.0,
+            allowDebt = true
+        )
+        val product = ProductEntity(
+            id = "void-debt-product",
+            name = "منتج آجل",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.customerDao().insertCustomer(customer)
+        db.productDao().insertProduct(product)
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.DEBT,
+            selectedCustomerId = customer.id
+        )
+        assertTrue(result is SaleResult.Success)
+        val sale = (result as SaleResult.Success).sale
+        assertEquals(100.0, db.customerDao().getCustomerById(customer.id)!!.currentDebt, 0.001)
+        assertEquals(100.0, db.shiftDao().getShiftById(testShift.id)!!.totalDebtSales, 0.001)
+
+        assertTrue(salesEngine.voidSale(sale.id, "اختبار إلغاء دين", testUser).isSuccess)
+        assertEquals(0.0, db.customerDao().getCustomerById(customer.id)!!.currentDebt, 0.001)
+        assertEquals(0.0, db.shiftDao().getShiftById(testShift.id)!!.totalDebtSales, 0.001)
+        val debtHistory = db.debtTransactionDao().getTransactionsForCustomer(customer.id).first()
+        assertEquals(2, debtHistory.size)
+        assertTrue(debtHistory.any { it.type == "SALE" && it.amount == 100.0 })
+        assertTrue(debtHistory.any { it.type == "VOID" && it.amount == -100.0 })
+    }
+
+    @Test
+    fun concurrentSalesAllocateDifferentInvoiceNumbers() = runBlocking {
+        val product = ProductEntity(
+            id = "concurrent-invoice-product",
+            name = "منتج اختبار متزامن",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+
+        val first = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+            salesEngine.executeSale(
+                shift = testShift,
+                user = testUser,
+                items = listOf(CartItem(product = product, quantity = 1)),
+                paymentMethod = PaymentMethod.CASH,
+                cashReceived = 100.0
+            )
+        }
+        val second = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
+            salesEngine.executeSale(
+                shift = testShift,
+                user = testUser,
+                items = listOf(CartItem(product = product, quantity = 1)),
+                paymentMethod = PaymentMethod.CASH,
+                cashReceived = 100.0
+            )
+        }
+        val firstResult = first.await()
+        val secondResult = second.await()
+        assertTrue(firstResult is SaleResult.Success)
+        assertTrue(secondResult is SaleResult.Success)
+        val firstInvoice = (firstResult as SaleResult.Success).invoiceNumber
+        val secondInvoice = (secondResult as SaleResult.Success).invoiceNumber
+        assertTrue("Concurrent sales must have distinct invoice numbers", firstInvoice != secondInvoice)
+        assertEquals(2, db.saleDao().getSalesCount())
+        val shift = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals(200.0, shift.totalCashSales, 0.001)
+        assertEquals(5200.0, shift.expectedCash, 0.001)
+    }
+
 }
