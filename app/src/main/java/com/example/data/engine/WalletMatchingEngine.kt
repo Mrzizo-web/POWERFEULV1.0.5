@@ -44,7 +44,20 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             if (existing != null) {
                 IngestResult.Duplicate(existing, "نفس حدث SMS/Idempotency-Key حُفظ بالفعل بواسطة معالجة متزامنة")
             } else {
-                throw error
+                // Unknown/non-financial messages may be stored without a wallet transaction.
+                // A concurrent retry hitting the unique SMS primary key must return the
+                // stored unmatched SMS rather than bubbling up a duplicate-key exception.
+                val existingSms = walletDao.getSmsById(stableId)
+                if (existingSms != null) {
+                    val matched = existingSms.matchedTransactionId?.let { walletDao.getTransactionById(it) }
+                    if (matched != null) {
+                        IngestResult.Duplicate(matched, "نفس حدث SMS/Idempotency-Key تمت معالجته مسبقًا")
+                    } else {
+                        IngestResult.Unmatched(existingSms)
+                    }
+                } else {
+                    throw error
+                }
             }
         }
     }
