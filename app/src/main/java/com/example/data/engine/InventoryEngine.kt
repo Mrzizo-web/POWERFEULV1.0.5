@@ -38,47 +38,47 @@ class InventoryEngine(
         if (recipe == null) {
             val product = productDao?.getProductById(productId)
             if (!product?.recipeId.isNullOrBlank()) {
-                throw InventoryValidationException("الوصفة المرتبطة بالمنتج \${product?.name ?: productId} غير موجودة أو غير نشطة")
+                throw InventoryValidationException("الوصفة المرتبطة بالمنتج ${product?.name ?: productId} غير موجودة أو غير نشطة")
             }
             // Products intentionally sold without a recipe do not consume raw materials.
             return
         }
 
         val recipeItems = recipeDao.getRecipeItemsSync(recipe.id)
-        if (recipeItems.isEmpty()) throw InventoryValidationException("الوصفة \${recipe.name} لا تحتوي على مكونات")
+        if (recipeItems.isEmpty()) throw InventoryValidationException("الوصفة ${recipe.name} لا تحتوي على مكونات")
 
         val requested = mutableListOf<RequestedLine>()
         for (item in recipeItems) {
             val perPortion = if (item.amount > 0.0) item.amount else item.quantity
             if (!perPortion.isFinite() || perPortion <= 0.0) {
-                throw InventoryValidationException("كمية غير صالحة في الوصفة \${recipe.name}: \${item.name}")
+                throw InventoryValidationException("كمية غير صالحة في الوصفة ${recipe.name}: ${item.name}")
             }
             val requiredForSale = perPortion * quantity
             if (!requiredForSale.isFinite() || requiredForSale <= 0.0) {
-                throw InventoryValidationException("تعذر حساب استهلاك المكوّن \${item.name}")
+                throw InventoryValidationException("تعذر حساب استهلاك المكوّن ${item.name}")
             }
 
             if (item.mixtureId.isNotBlank()) {
                 val mixture = mixtureDao.getMixtureById(item.mixtureId)
-                    ?: throw InventoryValidationException("الخلطة المرتبطة بالمكوّن \${item.name} غير موجودة")
+                    ?: throw InventoryValidationException("الخلطة المرتبطة بالمكوّن ${item.name} غير موجودة")
                 if (!mixture.outputQuantity.isFinite() || mixture.outputQuantity <= 0.0) {
-                    throw InventoryValidationException("كمية إنتاج الخلطة \${mixture.name} غير صالحة")
+                    throw InventoryValidationException("كمية إنتاج الخلطة ${mixture.name} غير صالحة")
                 }
                 val mixtureItems = mixtureDao.getMixtureItemsSync(item.mixtureId)
-                if (mixtureItems.isEmpty()) throw InventoryValidationException("الخلطة \${mixture.name} لا تحتوي على مواد خام")
+                if (mixtureItems.isEmpty()) throw InventoryValidationException("الخلطة ${mixture.name} لا تحتوي على مواد خام")
                 val requiredOutput = UnitConverter.convert(requiredForSale, item.unit, mixture.unit)
                 val ratio = requiredOutput / mixture.outputQuantity
                 for (mixtureItem in mixtureItems) {
                     val needed = mixtureItem.quantity * ratio
                     if (mixtureItem.rawMaterialId.isBlank() || !needed.isFinite() || needed <= 0.0) {
-                        throw InventoryValidationException("مكوّن غير صالح في الخلطة \${mixture.name}")
+                        throw InventoryValidationException("مكوّن غير صالح في الخلطة ${mixture.name}")
                     }
                     requested += RequestedLine(mixtureItem.rawMaterialId, needed, mixtureItem.unit)
                 }
             } else if (item.rawMaterialId.isNotBlank()) {
                 requested += RequestedLine(item.rawMaterialId, requiredForSale, item.unit)
             } else {
-                throw InventoryValidationException("المكوّن \${item.name} لا يرتبط بمادة خام أو خلطة")
+                throw InventoryValidationException("المكوّن ${item.name} لا يرتبط بمادة خام أو خلطة")
             }
         }
 
@@ -87,14 +87,14 @@ class InventoryEngine(
         val materials = linkedMapOf<String, RawMaterialEntity>()
         for (line in requested) {
             val material = rawMaterialDao.getRawMaterialById(line.materialId)
-                ?: throw InventoryValidationException("المادة الخام المرتبطة بالوصفة غير موجودة (ID: \${line.materialId})")
+                ?: throw InventoryValidationException("المادة الخام المرتبطة بالوصفة غير موجودة (ID: ${line.materialId})")
             val converted = try {
                 UnitConverter.convert(line.amount, line.unit, material.baseUnit)
             } catch (e: IllegalArgumentException) {
-                throw InventoryValidationException("وحدة قياس غير متوافقة للمادة \${material.name}: \${line.unit} ← \${material.baseUnit}")
+                throw InventoryValidationException("وحدة قياس غير متوافقة للمادة ${material.name}: ${line.unit} ← ${material.baseUnit}")
             }
             if (!converted.isFinite() || converted <= 0.0) {
-                throw InventoryValidationException("كمية استهلاك غير صالحة للمادة \${material.name}")
+                throw InventoryValidationException("كمية استهلاك غير صالحة للمادة ${material.name}")
             }
             materials[line.materialId] = material
             aggregatedAmounts[line.materialId] = (aggregatedAmounts[line.materialId] ?: 0.0) + converted
@@ -105,7 +105,7 @@ class InventoryEngine(
             val available = need.material.currentStock
             if (!available.isFinite() || available + STOCK_EPSILON < need.amountInBaseUnit) {
                 throw InventoryValidationException(
-                    "المخزون غير كافٍ للمادة \${need.material.name}: المطلوب \${format(need.amountInBaseUnit)} \${need.material.baseUnit}، المتاح \${format(available)} \${need.material.baseUnit}"
+                    "المخزون غير كافٍ للمادة ${need.material.name}: المطلوب ${format(need.amountInBaseUnit)} ${need.material.baseUnit}، المتاح ${format(available)} ${need.material.baseUnit}"
                 )
             }
         }
@@ -119,7 +119,7 @@ class InventoryEngine(
                 userId = userId,
                 userName = userName,
                 txType = InventoryTxType.CONSUMPTION,
-                note = "استهلاك وصفة \${recipe.name} لبيع فاتورة $saleId"
+                note = "استهلاك وصفة ${recipe.name} لبيع فاتورة $saleId"
             )
         }
     }
@@ -161,12 +161,12 @@ class InventoryEngine(
         val converted = try {
             UnitConverter.convert(amount, unit, mat.baseUnit)
         } catch (e: IllegalArgumentException) {
-            throw InventoryValidationException("وحدة قياس غير متوافقة للمادة \${mat.name}: $unit ← \${mat.baseUnit}")
+            throw InventoryValidationException("وحدة قياس غير متوافقة للمادة ${mat.name}: $unit ← ${mat.baseUnit}")
         }
         val previous = mat.currentStock
         if (!previous.isFinite() || previous + STOCK_EPSILON < converted) {
             throw InventoryValidationException(
-                "المخزون غير كافٍ للمادة \${mat.name}: المطلوب \${format(converted)} \${mat.baseUnit}، المتاح \${format(previous)} \${mat.baseUnit}"
+                "المخزون غير كافٍ للمادة ${mat.name}: المطلوب ${format(converted)} ${mat.baseUnit}، المتاح ${format(previous)} ${mat.baseUnit}"
             )
         }
         val next = (previous - converted).coerceAtLeast(0.0)
@@ -204,11 +204,11 @@ class InventoryEngine(
         val converted = try {
             UnitConverter.convert(amount, unit, mat.baseUnit)
         } catch (e: IllegalArgumentException) {
-            throw InventoryValidationException("وحدة قياس غير متوافقة للمادة \${mat.name}: $unit ← \${mat.baseUnit}")
+            throw InventoryValidationException("وحدة قياس غير متوافقة للمادة ${mat.name}: $unit ← ${mat.baseUnit}")
         }
         val previous = mat.currentStock
         val next = previous + converted
-        if (!next.isFinite()) throw InventoryValidationException("الرصيد الجديد غير صالح للمادة \${mat.name}")
+        if (!next.isFinite()) throw InventoryValidationException("الرصيد الجديد غير صالح للمادة ${mat.name}")
         rawMaterialDao.updateRawMaterial(mat.copy(currentStock = next, updatedAt = System.currentTimeMillis()))
         inventoryTransactionDao.insertTransaction(
             InventoryTransactionEntity(
