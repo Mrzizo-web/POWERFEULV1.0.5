@@ -209,7 +209,7 @@ fun LoginScreen(
                                 when (key) {
                                     "clear" -> {
                                         OutlinedButton(
-                                            onClick = { enteredPin = ""; onClearError() },
+                                            onClick = { enteredPin = ""; localSetupError = null; onClearError() },
                                             modifier = Modifier.size(72.dp),
                                             shape = CircleShape
                                         ) {
@@ -221,6 +221,7 @@ fun LoginScreen(
                                             onClick = {
                                                 if (enteredPin.isNotEmpty()) {
                                                     enteredPin = enteredPin.dropLast(1)
+                                                    localSetupError = null
                                                     onClearError()
                                                 }
                                             },
@@ -235,6 +236,7 @@ fun LoginScreen(
                                             onClick = {
                                                 if (enteredPin.length < 6) {
                                                     enteredPin += key
+                                                    localSetupError = null
                                                     onClearError()
                                                 }
                                             },
