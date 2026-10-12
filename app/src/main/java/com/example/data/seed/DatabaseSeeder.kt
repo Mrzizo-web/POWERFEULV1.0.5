@@ -26,8 +26,6 @@ object DatabaseSeeder {
                     isActive = true
                 )
             )
-        } else if (!existingOwner.isActive) {
-            db.userDao().updateUser(existingOwner.copy(isActive = true, updatedAt = System.currentTimeMillis()))
         }
 
         // Seed Wallets if not present
