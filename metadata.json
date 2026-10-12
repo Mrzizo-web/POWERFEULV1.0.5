@@ -1,0 +1,6 @@
+{
+  "name": "POWER FEUL POS",
+  "description": "نظام إدارة المبيعات والمخزون ونقاط البيع والحوالات المالية لنادي Power Home Gym",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
