@@ -15,11 +15,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.net.ServerSocket
 import java.net.Socket
+import org.json.JSONObject
 import java.util.UUID
 
 class GatewayServerSecurityAndroidTest {
@@ -97,6 +100,52 @@ class GatewayServerSecurityAndroidTest {
         assertTrue("Signed status request should succeed: $accepted", accepted.startsWith("HTTP/1.1 200"))
         val replay = sendRequest("GET", "/api/status", headers, "")
         assertTrue("Replaying a signed request ID should be rejected: $replay", replay.startsWith("HTTP/1.1 409"))
+    }
+
+    @Test
+    fun signedSmsIngestPreservesEscapedSmsTextExactly() {
+        val eventId = UUID.randomUUID().toString()
+        val rawMessage = "رسالة فيها \"علامة\" وشرطة مائلة \\\nوالسطر الثاني"
+        val payload = JSONObject()
+            .put("sender", "FLOOSAK")
+            .put("body", rawMessage)
+            .put("receivedAt", System.currentTimeMillis())
+            .toString()
+        val timestamp = System.currentTimeMillis().toString()
+        val signature = GatewayRequestSigner.sign(
+            token, "POST", "/api/sms/ingest", timestamp, eventId, deviceId, payload
+        )
+        val headers = mapOf(
+            GatewayRequestSigner.DEVICE_ID_HEADER to deviceId,
+            GatewayRequestSigner.EVENT_ID_HEADER to eventId,
+            GatewayRequestSigner.TIMESTAMP_HEADER to timestamp,
+            GatewayRequestSigner.SIGNATURE_HEADER to signature
+        )
+
+        val response = sendRequest("POST", "/api/sms/ingest", headers, payload)
+        assertTrue("Valid JSON SMS payload should be acknowledged: $response", response.startsWith("HTTP/1.1 200"))
+        val savedSms = runBlocking { db.walletDao().getSmsById(eventId) }
+        assertNotNull("SMS should be stored in Room", savedSms)
+        assertEquals(rawMessage, savedSms!!.body)
+    }
+
+    @Test
+    fun authenticatedMalformedJsonIsRejected() {
+        val eventId = UUID.randomUUID().toString()
+        val invalidJson = "{not-json"
+        val timestamp = System.currentTimeMillis().toString()
+        val signature = GatewayRequestSigner.sign(
+            token, "POST", "/api/sms/ingest", timestamp, eventId, deviceId, invalidJson
+        )
+        val headers = mapOf(
+            GatewayRequestSigner.DEVICE_ID_HEADER to deviceId,
+            GatewayRequestSigner.EVENT_ID_HEADER to eventId,
+            GatewayRequestSigner.TIMESTAMP_HEADER to timestamp,
+            GatewayRequestSigner.SIGNATURE_HEADER to signature
+        )
+
+        val response = sendRequest("POST", "/api/sms/ingest", headers, invalidJson)
+        assertTrue("Invalid JSON should produce HTTP 400: $response", response.startsWith("HTTP/1.1 400"))
     }
 
     private fun sendRequest(
