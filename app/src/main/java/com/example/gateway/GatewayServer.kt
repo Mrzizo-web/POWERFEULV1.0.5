@@ -1,6 +1,7 @@
 package com.example.gateway
 
 import com.example.data.engine.IngestResult
+import com.example.data.engine.GatewaySyncEngine
 import com.example.data.engine.WalletMatchingEngine
 import com.example.data.local.AppDatabase
 import kotlinx.coroutines.*
@@ -12,7 +13,8 @@ class GatewayServer(
     private val db: AppDatabase,
     private val walletMatchingEngine: WalletMatchingEngine,
     val port: Int = 8080,
-    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val gatewaySyncEngine: GatewaySyncEngine? = null
 ) {
     private var serverSocket: ServerSocket? = null
     var isRunning: Boolean = false
@@ -227,8 +229,9 @@ class GatewayServer(
             }
 
             path == "/api/queue/retry" && method == "POST" -> {
+                gatewaySyncEngine?.retryAllNow()
                 val pending = db.gatewayQueueDao().getPendingQueueItemsSync().size
-                Pair(200, """{"success":true,"pendingCount":$pending}""")
+                Pair(200, """{"success":true,"retried":true,"pendingCount":$pending}""")
             }
 
             else -> Pair(404, """{"error":"Not Found"}""")
