@@ -4,6 +4,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entity.*
 import com.example.domain.model.CustomerStatus
 import com.example.domain.model.UserRole
+import com.example.security.PasswordHasher
 
 object DatabaseSeeder {
     suspend fun seedIfNeeded(db: AppDatabase) {
@@ -27,6 +28,28 @@ object DatabaseSeeder {
                     isActive = true
                 )
             )
+        }
+
+        // Force re-enrollment for a few known PINs shipped by older builds.
+        // This only clears exact known legacy defaults; custom credentials are preserved.
+        if (existingOwner != null && existingOwner.role == UserRole.OWNER) {
+            val knownLegacyPins = listOf("1234", "775152", "775152713")
+            val hasKnownDefault = knownLegacyPins.any { pin ->
+                existingOwner.pinHash.isNotBlank() &&
+                    existingOwner.pinSalt.isNotBlank() &&
+                    PasswordHasher.DEFAULT.verify(pin, existingOwner.pinSalt, existingOwner.pinHash)
+            }
+            if (hasKnownDefault) {
+                db.userDao().updateUser(
+                    existingOwner.copy(
+                        pinHash = "",
+                        pinSalt = "",
+                        failedAttempts = 0,
+                        lockedUntil = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
         }
 
         // Seed Wallets if not present
