@@ -30,7 +30,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val powerAiEngine = PowerAiEngine(db)
     val walletMatchingEngine = WalletMatchingEngine(db)
     val backupRestoreEngine = BackupRestoreEngine(application, db)
-    val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope)
+    val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope, autoStartRetry = false)
 
     private var gatewayServer: com.example.gateway.GatewayServer? = null
     val isGatewayRunning = MutableStateFlow(false)
