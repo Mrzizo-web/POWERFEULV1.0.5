@@ -167,14 +167,16 @@ class WalletShiftIntegrationTest {
                 status = ShiftStatus.OPEN
             )
         )
-        val engine = WalletMatchingEngine(db)
+        // Distinct engine instances model delivery from independent service/ViewModel paths.
+        val firstEngine = WalletMatchingEngine(db)
+        val secondEngine = WalletMatchingEngine(db)
         val body = "استلمت حوالة من حاشد بزدان بمبلغ 800.00 ر.ي رصيدك 800.00 ر.ي"
         val results = kotlinx.coroutines.coroutineScope {
             val first = async(kotlinx.coroutines.Dispatchers.IO) {
-                engine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
+                firstEngine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
             }
             val second = async(kotlinx.coroutines.Dispatchers.IO) {
-                engine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
+                secondEngine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
             }
             first.await() to second.await()
         }
