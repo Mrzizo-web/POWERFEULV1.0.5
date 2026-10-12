@@ -75,10 +75,28 @@ class SalesEngine(
             paymentReference = paymentReference,
             cashReceived = cashReceived,
             cashChange = cashChange,
+            totalCost = items.sumOf { it.product.costPrice * it.quantity },
             notes = notes
         )
 
+        try {
         db.withTransaction {
+                    val openShift = shiftDao.getShiftById(shift.id)
+                        ?: throw InventoryValidationException("الشفت غير موجود")
+                    if (openShift.status != com.example.domain.model.ShiftStatus.OPEN) {
+                        throw InventoryValidationException("لا يمكن البيع على شفت مغلق")
+                    }
+                    if (paymentMethod == PaymentMethod.DEBT) {
+                        val refreshedCustomer = selectedCustomerId?.let { customerDao.getCustomerById(it) }
+                            ?: throw InventoryValidationException("العميل غير موجود")
+                        if (!refreshedCustomer.allowDebt || refreshedCustomer.status == CustomerStatus.BLOCKED) {
+                            throw InventoryValidationException("العميل غير مسموح له بالبيع الآجل")
+                        }
+                        if (refreshedCustomer.creditLimit > 0 && refreshedCustomer.currentDebt + netAmount > refreshedCustomer.creditLimit) {
+                            throw InventoryValidationException("المبلغ يتجاوز السقف الائتماني للعميل (\${refreshedCustomer.creditLimit} ريال)")
+                        }
+                        customer = refreshedCustomer
+                    }
                     saleDao.insertSale(saleEntity)
 
                     val saleItems = items.map { item ->
@@ -158,6 +176,11 @@ class SalesEngine(
                     )
 
         }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            return SaleResult.Error(e.message ?: "تعذر إتمام البيع. تم التراجع عن التغييرات.")
+        }
         return SaleResult.Success(saleEntity, invoiceNumber, cashChange)
     }
 
@@ -166,45 +189,86 @@ class SalesEngine(
         reason: String,
         user: UserEntity
     ): Result<SaleEntity> {
-        val sale = saleDao.getSaleById(saleId) ?: return Result.failure(Exception("الفاتورة غير موجودة"))
-        if (sale.status == "VOIDED") return Result.failure(Exception("الفاتورة ملغاة مسبقاً"))
+        return try {
+            db.withTransaction {
+                val sale = saleDao.getSaleById(saleId)
+                    ?: return@withTransaction Result.failure(Exception("الفاتورة غير موجودة"))
+                if (sale.status == "VOIDED") {
+                    return@withTransaction Result.failure(Exception("الفاتورة ملغاة مسبقاً"))
+                }
 
-        val updatedSale = sale.copy(
-            status = "VOIDED",
-            voidedAt = System.currentTimeMillis(),
-            voidedByUserId = user.id,
-            voidReason = reason
-        )
-        db.withTransaction {
-                    saleDao.updateSale(updatedSale)
+                val updatedSale = sale.copy(
+                    status = "VOIDED",
+                    voidedAt = System.currentTimeMillis(),
+                    voidedByUserId = user.id,
+                    voidReason = reason
+                )
 
-                    // Restore inventory
-                    val items = saleDao.getSaleItemsSync(saleId)
-                    for (item in items) {
-                        inventoryEngine.restoreForProduct(
-                            productId = item.productId,
-                            quantity = item.quantity,
-                            saleId = saleId,
-                            userId = user.id,
-                            userName = user.name
+                // Restore the transaction snapshot recorded at sale time; never
+                // calculate from a recipe that might have changed since the sale.
+                inventoryEngine.restoreSaleConsumption(saleId, user.id, user.name)
+
+                val shift = shiftDao.getShiftById(sale.shiftId)
+                if (shift != null) {
+                    val reversedShift = when (sale.paymentMethod) {
+                        PaymentMethod.CASH -> shift.copy(
+                            totalCashSales = (shift.totalCashSales - sale.netAmount).coerceAtLeast(0.0),
+                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(shift.openingCash)
+                        )
+                        PaymentMethod.E_WALLET -> shift.copy(
+                            totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0)
+                        )
+                        PaymentMethod.DEBT -> shift.copy(
+                            totalDebtSales = (shift.totalDebtSales - sale.netAmount).coerceAtLeast(0.0)
                         )
                     }
+                    shiftDao.updateShift(reversedShift)
+                }
 
-                    auditLogDao.insertLog(
-                        AuditLogEntity(
-                            userId = user.id,
-                            userName = user.name,
-                            userRole = user.role.name,
-                            action = "SALE_VOIDED",
-                            entityType = "SALE",
-                            entityId = saleId,
-                            previousValue = "COMPLETED",
-                            newValue = "VOIDED",
-                            notes = "إلغاء فاتورة: $reason"
+                if (sale.paymentMethod == PaymentMethod.DEBT && sale.customerId.isNotBlank()) {
+                    val customer = customerDao.getCustomerById(sale.customerId)
+                    if (customer != null) {
+                        val newDebt = (customer.currentDebt - sale.netAmount).coerceAtLeast(0.0)
+                        // Preserve a deliberately blocked/settled status; reverse only the balance.
+                        customerDao.updateDebt(customer.id, newDebt, customer.status)
+                        debtTransactionDao.insertDebtTransaction(
+                            DebtTransactionEntity(
+                                customerId = customer.id,
+                                customerName = customer.name,
+                                type = "VOID",
+                                amount = -sale.netAmount,
+                                balanceAfter = newDebt,
+                                paymentMethod = PaymentMethod.DEBT,
+                                referenceId = sale.invoiceNumber,
+                                notes = "عكس دين الفاتورة الملغاة \${sale.invoiceNumber}",
+                                userId = user.id,
+                                userName = user.name
+                            )
                         )
-                    )
+                    }
+                }
 
+                saleDao.updateSale(updatedSale)
+                auditLogDao.insertLog(
+                    AuditLogEntity(
+                        userId = user.id,
+                        userName = user.name,
+                        userRole = user.role.name,
+                        action = "SALE_VOIDED",
+                        entityType = "SALE",
+                        entityId = saleId,
+                        previousValue = "COMPLETED",
+                        newValue = "VOIDED",
+                        notes = "إلغاء فاتورة: $reason؛ تم عكس إجماليات الشفت والدين واسترجاع حركات المخزون"
+                    )
+                )
+                Result.success(updatedSale)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-        return Result.success(updatedSale)
     }
+
 }
