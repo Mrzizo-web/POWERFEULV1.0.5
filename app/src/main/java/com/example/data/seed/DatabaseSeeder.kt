@@ -4,23 +4,24 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entity.*
 import com.example.domain.model.CustomerStatus
 import com.example.domain.model.UserRole
-import com.example.security.PasswordHasher
 
 object DatabaseSeeder {
     suspend fun seedIfNeeded(db: AppDatabase) {
         // Ensure an owner account exists even if an earlier launch skipped seeding.
         val ownerId = "user-owner-ziad"
         val existingOwner = db.userDao().getUserById(ownerId)
-        if (existingOwner == null) {
-            val initialOwnerPin = charArrayOf('7', '7', '5', '1', '5', '2').concatToString()
-            val hashResult = PasswordHasher.DEFAULT.hash(initialOwnerPin)
+        val activeOwnerCount = db.userDao().countActiveOwners()
+        if (existingOwner == null && activeOwnerCount == 0) {
+            // Never ship or seed a universal PIN. The first login screen guides the
+            // owner through choosing a 4-6 digit PIN, which is salted and hashed
+            // before the session is opened.
             db.userDao().insertUser(
                 UserEntity(
                     id = ownerId,
                     name = "زياد قروش",
                     username = "ziad",
-                    pinHash = hashResult.hashHex,
-                    pinSalt = hashResult.saltHex,
+                    pinHash = "",
+                    pinSalt = "",
                     role = UserRole.OWNER,
                     phone = "",
                     isActive = true
