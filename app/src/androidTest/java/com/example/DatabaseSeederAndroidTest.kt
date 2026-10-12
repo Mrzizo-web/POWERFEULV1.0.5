@@ -89,4 +89,28 @@ class DatabaseSeederAndroidTest {
         assertEquals("preexisting-hash", db.userDao().getUserById("existing-cashier")!!.pinHash)
     }
 
+    @Test
+    fun knownLegacyOwnerDefaultPinRequiresReenrollmentAfterUpgrade() = runBlocking {
+        val oldPin = "775152713"
+        val oldHash = PasswordHasher.DEFAULT.hash(oldPin)
+        db.userDao().insertUser(
+            UserEntity(
+                id = "user-owner-ziad",
+                name = "مالك سابق",
+                username = "ziad",
+                pinHash = oldHash.hashHex,
+                pinSalt = oldHash.saltHex,
+                role = UserRole.OWNER,
+                isActive = true
+            )
+        )
+
+        DatabaseSeeder.seedIfNeeded(db)
+
+        val owner = db.userDao().getUserById("user-owner-ziad")!!
+        assertTrue("Known legacy PIN must be cleared for safe reenrollment", owner.pinHash.isBlank())
+        assertTrue(owner.pinSalt.isBlank())
+        assertTrue(owner.isActive)
+    }
+
 }
