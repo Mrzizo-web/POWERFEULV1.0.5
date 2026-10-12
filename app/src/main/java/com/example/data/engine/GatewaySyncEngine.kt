@@ -14,6 +14,7 @@ class GatewaySyncEngine(
     private val autoStartRetry: Boolean = true
 ) {
     private val queueDao = db.gatewayQueueDao()
+    private var startupJob: Job? = null
     private var retryJob: Job? = null
 
     val pendingQueue: Flow<List<GatewayQueueEntity>> = queueDao.getPendingQueueItems()
@@ -22,14 +23,16 @@ class GatewaySyncEngine(
 
     init {
         if (autoStartRetry) {
-            coroutineScope.launch {
+            startupJob = coroutineScope.launch {
                 queueDao.recoverInProgressItems()
-                startPeriodicRetryLoop()
+                if (isActive) startPeriodicRetryLoop()
             }
         }
     }
 
     fun stopPeriodicRetryLoop() {
+        startupJob?.cancel()
+        startupJob = null
         retryJob?.cancel()
         retryJob = null
     }
