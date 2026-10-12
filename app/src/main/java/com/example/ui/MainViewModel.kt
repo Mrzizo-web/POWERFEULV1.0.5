@@ -70,6 +70,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 delay(15_000L)
             }
         }
+
+        // Read the real foreground-service state; starting a request is not success.
+        viewModelScope.launch {
+            while (true) {
+                isGatewayRunning.value = com.example.gateway.GatewayService.isServerRunning
+                if (isGatewayRunning.value) {
+                    gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
+                }
+                delay(750L)
+            }
+        }
     }
 
     val currentUser: StateFlow<UserEntity?> = _currentUser.asStateFlow()
