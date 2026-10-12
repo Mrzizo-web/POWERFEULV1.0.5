@@ -50,7 +50,8 @@ class RecipeAndSalesAndroidTest {
             db.rawMaterialDao(),
             db.recipeDao(),
             db.mixtureDao(),
-            db.inventoryTransactionDao()
+            db.inventoryTransactionDao(),
+            db.productDao()
         )
         salesEngine = SalesEngine(db, inventoryEngine)
 
@@ -159,4 +160,34 @@ class RecipeAndSalesAndroidTest {
         assertEquals(1000.0, restoredBanana.currentStock, 0.001)
         assertEquals(1000.0, restoredMilk.currentStock, 0.001)
     }
+    @Test
+    fun testInsufficientRecipeStockRejectsSaleWithoutPartialWrites() = runBlocking {
+        val banana = RawMaterialEntity(id = "mat-low-banana", name = "موز", baseUnit = "g", currentStock = 100.0)
+        val milk = RawMaterialEntity(id = "mat-low-milk", name = "حليب", baseUnit = "ml", currentStock = 1000.0)
+        db.rawMaterialDao().insertRawMaterial(banana)
+        db.rawMaterialDao().insertRawMaterial(milk)
+        val product = ProductEntity(id = "prod-low-stock", name = "اختبار مخزون ناقص", categoryId = "cat-test", price = 100.0, recipeId = "recipe-low-stock")
+        db.productDao().insertProduct(product)
+        db.recipeDao().insertRecipe(RecipeEntity(id = "recipe-low-stock", productId = product.id, name = "وصفة اختبار", isActive = true))
+        db.recipeDao().insertRecipeItems(listOf(
+            RecipeItemEntity(recipeId = "recipe-low-stock", rawMaterialId = banana.id, name = banana.name, amount = 150.0, quantity = 150.0, unit = "g"),
+            RecipeItemEntity(recipeId = "recipe-low-stock", rawMaterialId = milk.id, name = milk.name, amount = 100.0, quantity = 100.0, unit = "ml")
+        ))
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 100.0
+        )
+
+        assertTrue("Sale should be rejected for insufficient raw material", result is SaleResult.Error)
+        assertEquals(100.0, db.rawMaterialDao().getRawMaterialById(banana.id)!!.currentStock, 0.001)
+        assertEquals(1000.0, db.rawMaterialDao().getRawMaterialById(milk.id)!!.currentStock, 0.001)
+        assertEquals(0, db.saleDao().getSalesCount())
+        assertTrue(db.inventoryTransactionDao().getRecentTransactions().first().isEmpty())
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
 }
