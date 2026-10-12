@@ -251,11 +251,20 @@ class GatewayServer(
             }
 
             "/api/sms/ingest" -> {
-                val sender = extractJsonField(body, "sender")
-                val smsBody = extractJsonField(body, "body")
-                val receivedAt = extractJsonLong(body, "receivedAt") ?: System.currentTimeMillis()
-                if (sender.isBlank() || smsBody.isBlank()) {
-                    400 to JSONObject().put("error", "sender and body are required").toString()
+                val payload = try {
+                    JSONObject(body)
+                } catch (_: Exception) {
+                    return 400 to JSONObject().put("error", "Invalid JSON payload").toString()
+                }
+                val sender = if (payload.isNull("sender")) "" else payload.optString("sender", "").trim()
+                val smsBody = if (payload.isNull("body")) "" else payload.optString("body", "")
+                val receivedAt = if (payload.has("receivedAt") && !payload.isNull("receivedAt")) {
+                    payload.optLong("receivedAt", -1L)
+                } else {
+                    System.currentTimeMillis()
+                }
+                if (sender.isBlank() || smsBody.isBlank() || receivedAt <= 0L) {
+                    400 to JSONObject().put("error", "sender, body and a positive receivedAt are required").toString()
                 } else {
                     when (val result = walletMatchingEngine.ingestSms(
                         sender = sender,
@@ -329,21 +338,6 @@ class GatewayServer(
         }
         if (seenRequestIds.size > MAX_CACHED_REQUESTS) seenRequestIds.clear()
         return seenRequestIds.putIfAbsent("$deviceId:$eventId", now) == null
-    }
-
-    private fun extractJsonField(json: String, key: String): String {
-        val pattern = Regex(""""$key"\s*:\s*"((?:\\.|[^"\\])*)"""")
-        val match = pattern.find(json) ?: return ""
-        return match.groupValues[1]
-            .replace("\\n", "\n")
-            .replace("\\r", "\r")
-            .replace("\\\"", "\"")
-            .replace("\\\\", "\\")
-    }
-
-    private fun extractJsonLong(json: String, key: String): Long? {
-        val pattern = Regex(""""$key"\s*:\s*(-?\d+)""")
-        return pattern.find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
     }
 
     companion object {
