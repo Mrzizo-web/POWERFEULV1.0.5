@@ -34,7 +34,13 @@ object GatewayRequestSigner {
     ): Boolean {
         if (token.length < 32 || timestamp.isBlank() || eventId.isBlank() || deviceId.isBlank()) return false
         val timestampMillis = timestamp.toLongOrNull() ?: return false
-        if (kotlin.math.abs(nowMillis - timestampMillis) > MAX_CLOCK_SKEW_MS) return false
+        if (timestampMillis < 0L || nowMillis < 0L) return false
+        val delta = if (timestampMillis >= nowMillis) {
+            timestampMillis - nowMillis
+        } else {
+            nowMillis - timestampMillis
+        }
+        if (delta < 0L || delta > MAX_CLOCK_SKEW_MS) return false
         if (!signature.matches(Regex("[0-9a-fA-F]{64}"))) return false
         val expected = sign(token, timestamp, eventId, deviceId, body)
         return MessageDigest.isEqual(
