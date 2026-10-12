@@ -1,6 +1,5 @@
 package com.example
 
-import android.database.sqlite.SQLiteDatabase
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.local.AppDatabase
@@ -23,15 +22,9 @@ class LegacyOwnerPinMigrationAndroidTest {
         val bootstrap = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
             .allowMainThreadQueries()
             .build()
-        // Force Room to open/create the on-disk file before converting it to a legacy schema.
-        bootstrap.openHelper.writableDatabase.version
-        bootstrap.close()
-
-        val raw = SQLiteDatabase.openDatabase(
-            context.getDatabasePath(dbName).absolutePath,
-            null,
-            SQLiteDatabase.OPEN_READWRITE
-        )
+        // Mutate the same open SQLite database connection Room created. This avoids
+        // path/connection discrepancies between Context database APIs in instrumentation.
+        val raw = bootstrap.openHelper.writableDatabase
         raw.execSQL("DROP TABLE users")
         raw.execSQL(
             """
@@ -56,7 +49,7 @@ class LegacyOwnerPinMigrationAndroidTest {
             arrayOf<Any?>("legacy-employee", "موظف قديم", "cashier-old", "2468", "CASHIER", "", 1, 1001L)
         )
         raw.execSQL("PRAGMA user_version = 1")
-        raw.close()
+        bootstrap.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
             .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
