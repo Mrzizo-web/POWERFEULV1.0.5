@@ -877,26 +877,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleGatewayServer() {
-        if (isGatewayRunning.value) {
-            gatewayServer?.stop()
-            gatewayServer = null
+        if (com.example.gateway.GatewayService.isServerRunning) {
             com.example.gateway.GatewayService.stopGateway(getApplication())
-            isGatewayRunning.value = false
-            snackbarMessage.value = "تم إيقاف خادم بوابة الرسائل"
+            snackbarMessage.value = "أُرسل طلب إيقاف خادم Gateway"
         } else {
-            val port = gatewayPort.value
-            gatewayServer = com.example.gateway.GatewayServer(db, walletMatchingEngine, port, gatewaySyncEngine = gatewaySyncEngine, context = getApplication())
-            val started = gatewayServer?.start() == true
-            isGatewayRunning.value = started
-            gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
-            if (started) {
-                snackbarMessage.value = "تم تشغيل خادم البوابة على: ${gatewayIp.value}:$port"
-            } else {
-                snackbarMessage.value = "فشل تشغيل خادم البوابة على المنفذ $port"
-            }
+            com.example.gateway.GatewayService.startGateway(getApplication(), gatewayPort.value)
+            snackbarMessage.value = "أُرسل طلب تشغيل خادم Gateway"
         }
     }
-
     fun retryQueueItem(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             gatewaySyncEngine.retryNow(id)
