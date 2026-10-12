@@ -43,6 +43,8 @@ object GatewayRequestAuthenticator {
         }
         if (!GatewayRequestSigner.verify(
                 token = configuredToken,
+                method = method,
+                path = path,
                 timestamp = timestamp,
                 eventId = eventId,
                 deviceId = deviceId,
