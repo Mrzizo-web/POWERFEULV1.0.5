@@ -30,7 +30,23 @@ class WalletMatchingEngine(private val db: AppDatabase) {
         receivedAt: Long = System.currentTimeMillis(),
         sourceSmsId: String? = null
     ): IngestResult = ingestMutex.withLock {
-        ingestSmsLocked(sender, body, receivedAt, sourceSmsId)
+        try {
+            ingestSmsLocked(sender, body, receivedAt, sourceSmsId)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Separate service/ViewModel engine instances do not share the in-memory Mutex.
+            // The unique Room index on originalSmsId is the durable race winner; turn the
+            // losing constraint exception into a normal Duplicate response for retry safety.
+            val stableId = sourceSmsId?.trim().takeIf { !it.isNullOrEmpty() }
+                ?: stableSmsId(sender, receivedAt, body)
+            val existing = walletDao.getTransactionByOriginalSmsId(stableId)
+            if (existing != null) {
+                IngestResult.Duplicate(existing, "نفس حدث SMS/Idempotency-Key حُفظ بالفعل بواسطة معالجة متزامنة")
+            } else {
+                throw error
+            }
+        }
     }
 
     private suspend fun ingestSmsLocked(
