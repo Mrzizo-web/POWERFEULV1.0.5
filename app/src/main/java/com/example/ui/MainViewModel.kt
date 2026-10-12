@@ -509,18 +509,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addPurchase(supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String = "") {
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            purchaseEngine.createPurchase(
-                supplierId = supplierId,
-                supplierName = supplierName,
-                invoiceNumber = invoiceNumber,
-                items = items,
-                user = user,
-                notes = notes
-            )
-            db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تسجيل فاتورة شراء", notes = "فاتورة شراء $invoiceNumber من المورد $supplierName")
-            )
-            snackbarMessage.value = "تم تسجيل فاتورة الشراء وتحديث المخزون بنجاح"
+            try {
+                purchaseEngine.createPurchase(
+                    supplierId = supplierId,
+                    supplierName = supplierName,
+                    invoiceNumber = invoiceNumber,
+                    items = items,
+                    user = user,
+                    notes = notes
+                )
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = "تم تسجيل فاتورة الشراء وتحديث المخزون والتكلفة بنجاح"
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = error.message ?: "تعذر تسجيل فاتورة الشراء؛ لم تُحفظ التغييرات الجزئية"
+                }
+            }
         }
     }
 
@@ -739,21 +746,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createPurchase(supplierId: String, supplierName: String, invoiceNo: String, materialId: String, qty: Double, unit: String, unitPrice: Double) {
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val item = NewPurchaseItem(
-                rawMaterialId = materialId,
-                rawMaterialName = "",
-                unit = unit,
-                quantity = qty,
-                unitPrice = unitPrice
-            )
-            purchaseEngine.createPurchase(
-                supplierId = supplierId,
-                supplierName = supplierName,
-                invoiceNumber = invoiceNo,
-                items = listOf(item),
-                user = user
-            )
-            snackbarMessage.value = "تم تسجيل فاتورة الشراء وتحديث المخزون"
+            try {
+                val material = db.rawMaterialDao().getRawMaterialById(materialId)
+                    ?: throw IllegalArgumentException("المادة الخام غير موجودة")
+                val item = NewPurchaseItem(
+                    rawMaterialId = materialId,
+                    rawMaterialName = material.name,
+                    unit = unit,
+                    quantity = qty,
+                    unitPrice = unitPrice
+                )
+                purchaseEngine.createPurchase(
+                    supplierId = supplierId,
+                    supplierName = supplierName,
+                    invoiceNumber = invoiceNo,
+                    items = listOf(item),
+                    user = user
+                )
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = "تم تسجيل فاتورة الشراء وتحديث المخزون والتكلفة بنجاح"
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = error.message ?: "تعذر تسجيل فاتورة الشراء"
+                }
+            }
         }
     }
 
