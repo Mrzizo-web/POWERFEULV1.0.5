@@ -964,13 +964,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveSystemSetting(key: String, value: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
+            if (key == "gateway_token") {
+                val token = value.trim()
+                if (token.length < com.example.gateway.GatewaySecretStore.MIN_TOKEN_LENGTH) {
+                    snackbarMessage.value = "رمز Gateway يجب أن يكون 32 حرفًا على الأقل"
+                    return@launch
+                }
+                if (!com.example.gateway.GatewaySecretStore(getApplication()).saveToken(token)) {
+                    snackbarMessage.value = "تعذر حفظ رمز Gateway في التخزين الآمن"
+                    return@launch
+                }
+                db.settingsDao().deleteSetting("gateway_token")
+            } else {
+                db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
+            }
             snackbarMessage.value = "تم حفظ الإعداد بنجاح"
         }
     }
 
     suspend fun getSystemSetting(key: String): String? = withContext(Dispatchers.IO) {
-        db.settingsDao().getSetting(key)
+        if (key == "gateway_token") {
+            com.example.gateway.GatewaySecretStore(getApplication()).getToken()
+        } else {
+            db.settingsDao().getSetting(key)
+        }
     }
 
     suspend fun askAi(prompt: String): String {
