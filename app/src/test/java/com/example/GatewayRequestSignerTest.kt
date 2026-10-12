@@ -44,4 +44,27 @@ class GatewayRequestSignerTest {
             )
         )
     }
+    @Test
+    fun timestampExtremesAreRejectedWithoutOverflow() {
+        val eventId = "event-extreme"
+        val deviceId = "GATEWAY_DEV_01"
+        val body = "{}"
+        val signature = GatewayRequestSigner.sign(token, "0", eventId, deviceId, body)
+        assertFalse(
+            GatewayRequestSigner.verify(
+                token, Long.MIN_VALUE.toString(), eventId, deviceId, body, signature, nowMillis = 1000L
+            )
+        )
+        assertFalse(
+            GatewayRequestSigner.verify(
+                token, Long.MAX_VALUE.toString(), eventId, deviceId, body, signature, nowMillis = 1000L
+            )
+        )
+        assertFalse(
+            GatewayRequestSigner.verify(
+                token, "-1", eventId, deviceId, body, signature, nowMillis = 1000L
+            )
+        )
+    }
+
 }
