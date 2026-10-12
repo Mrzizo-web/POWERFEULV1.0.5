@@ -13,6 +13,12 @@ interface PurchaseDao {
     @Query("SELECT * FROM purchases WHERE id = :id LIMIT 1")
     suspend fun getPurchaseById(id: String): PurchaseEntity?
 
+    @Query("SELECT * FROM purchases WHERE supplierId = :supplierId AND invoiceNumber = :invoiceNumber COLLATE NOCASE LIMIT 1")
+    suspend fun getPurchaseBySupplierInvoice(supplierId: String, invoiceNumber: String): PurchaseEntity?
+
+    @Query("SELECT COUNT(*) FROM purchases")
+    suspend fun getPurchaseCount(): Int
+
     @Query("SELECT * FROM purchase_items WHERE purchaseId = :purchaseId")
     fun getPurchaseItems(purchaseId: String): Flow<List<PurchaseItemEntity>>
 
