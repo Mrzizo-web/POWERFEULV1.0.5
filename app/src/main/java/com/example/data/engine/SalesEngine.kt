@@ -93,7 +93,7 @@ class SalesEngine(
                             throw InventoryValidationException("العميل غير مسموح له بالبيع الآجل")
                         }
                         if (refreshedCustomer.creditLimit > 0 && refreshedCustomer.currentDebt + netAmount > refreshedCustomer.creditLimit) {
-                            throw InventoryValidationException("المبلغ يتجاوز السقف الائتماني للعميل (\${refreshedCustomer.creditLimit} ريال)")
+                            throw InventoryValidationException("المبلغ يتجاوز السقف الائتماني للعميل (${refreshedCustomer.creditLimit} ريال)")
                         }
                         customer = refreshedCustomer
                     }
@@ -240,7 +240,7 @@ class SalesEngine(
                                 balanceAfter = newDebt,
                                 paymentMethod = PaymentMethod.DEBT,
                                 referenceId = sale.invoiceNumber,
-                                notes = "عكس دين الفاتورة الملغاة \${sale.invoiceNumber}",
+                                notes = "عكس دين الفاتورة الملغاة ${sale.invoiceNumber}",
                                 userId = user.id,
                                 userName = user.name
                             )
