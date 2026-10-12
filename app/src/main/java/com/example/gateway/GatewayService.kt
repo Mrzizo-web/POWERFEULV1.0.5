@@ -28,6 +28,7 @@ class GatewayService : Service() {
         const val ACTION_START = "ACTION_START_GATEWAY"
         const val ACTION_STOP = "ACTION_STOP_GATEWAY"
         const val EXTRA_PORT = "gateway_port"
+        private const val DEFAULT_PORT = 8080
 
         @Volatile
         var isServerRunning: Boolean = false
@@ -171,7 +172,4 @@ class GatewayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private companion object {
-        const val DEFAULT_PORT = 8080
-    }
 }
