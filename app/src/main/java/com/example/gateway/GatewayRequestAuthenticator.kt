@@ -38,6 +38,9 @@ object GatewayRequestAuthenticator {
         if (eventId.isBlank() || timestamp.isBlank() || signature.isBlank() || deviceId.isBlank()) {
             return GatewayAuthFailure(401, "Missing mandatory HMAC authentication headers")
         }
+        if (eventId.length > 128 || deviceId.length > 128) {
+            return GatewayAuthFailure(401, "Gateway event/device ID is too long")
+        }
         if (deviceId != configuredDeviceId) {
             return GatewayAuthFailure(401, "Invalid gateway device ID")
         }
