@@ -187,4 +187,25 @@ class WalletShiftIntegrationTest {
     }
 
 
+    @Test
+    fun concurrentUnmatchedSmsIsStoredOnceAndAcknowledgedWithoutException() = runBlocking {
+        val firstEngine = WalletMatchingEngine(db)
+        val secondEngine = WalletMatchingEngine(db)
+        val body = "هذا نص عادي لا يحتوي على إشعار محفظة مدعومة"
+        val results = kotlinx.coroutines.coroutineScope {
+            val first = async(kotlinx.coroutines.Dispatchers.IO) {
+                firstEngine.ingestSms("UNKNOWN_SENDER", body, 9_000L, "unmatched-event-concurrent")
+            }
+            val second = async(kotlinx.coroutines.Dispatchers.IO) {
+                secondEngine.ingestSms("UNKNOWN_SENDER", body, 9_000L, "unmatched-event-concurrent")
+            }
+            first.await() to second.await()
+        }
+
+        assertTrue(results.first is IngestResult.Unmatched)
+        assertTrue(results.second is IngestResult.Unmatched)
+        assertEquals(1, db.walletDao().getAllSmsSync().size)
+        assertTrue(db.walletDao().getAllTransactionsSync().isEmpty())
+    }
+
 }
