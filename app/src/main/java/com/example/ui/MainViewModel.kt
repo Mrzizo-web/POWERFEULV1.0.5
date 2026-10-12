@@ -456,22 +456,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addRecipe(name: String, productId: String, items: List<RecipeItemEntity>, notes: String = "") {
         val user = _currentUser.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val recipeId = java.util.UUID.randomUUID().toString()
-            val totalCost = items.sumOf { it.costContribution }
-            val recipe = RecipeEntity(
-                id = recipeId,
-                productId = productId,
-                name = name,
-                calculatedCost = totalCost,
-                notes = notes
-            )
-            db.recipeDao().insertRecipe(recipe)
-            val dbItems = items.map { it.copy(recipeId = recipeId) }
-            db.recipeDao().insertRecipeItems(dbItems)
-            db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة وصفة", notes = "تمت إضافة الوصفة $name بتكلفة $totalCost")
-            )
-            snackbarMessage.value = "تم حفظ الوصفة بنجاح"
+            try {
+                com.example.data.engine.RecipeManager(db).saveRecipe(name, productId, items, notes, user)
+                snackbarMessage.value = "تم حفظ الوصفة ومكوّناتها وربطها بالمنتج"
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                snackbarMessage.value = error.message ?: "تعذر حفظ الوصفة"
+            }
         }
     }
 
