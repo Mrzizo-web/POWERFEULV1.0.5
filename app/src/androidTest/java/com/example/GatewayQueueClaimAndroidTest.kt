@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.GatewayQueueEntity
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,9 +40,7 @@ class GatewayQueueClaimAndroidTest {
 
         assertEquals(1, dao.claimItem(item.id, 1000L))
         assertEquals(0, dao.claimItem(item.id, 1001L))
-        assertEquals("IN_PROGRESS", dao.getAllQueueItems().let { flow ->
-            kotlinx.coroutines.flow.first(flow).single().status
-        })
+        assertEquals("IN_PROGRESS", dao.getAllQueueItems().first().single().status)
 
         assertEquals(1, dao.recoverInProgressItems(2000L))
         assertEquals(1, dao.claimItem(item.id, 2001L))
