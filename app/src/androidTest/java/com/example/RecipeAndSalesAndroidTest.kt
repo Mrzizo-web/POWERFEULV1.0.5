@@ -383,4 +383,104 @@ class RecipeAndSalesAndroidTest {
         assertEquals(5200.0, shift.expectedCash, 0.001)
     }
 
+    @Test
+    fun insufficientCashIsRejectedWithoutAnyFinancialWrites() = runBlocking {
+        val product = ProductEntity(
+            id = "cash-validation-product",
+            name = "منتج اختبار النقد",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 99.0
+        )
+
+        assertTrue(result is SaleResult.Error)
+        assertEquals(0, db.saleDao().getSalesCount())
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+        assertEquals(0.0, db.shiftDao().getShiftById(testShift.id)!!.totalCashSales, 0.001)
+    }
+
+    @Test
+    fun invalidDiscountIsRejectedWithoutCreatingInvoice() = runBlocking {
+        val product = ProductEntity(
+            id = "discount-validation-product",
+            name = "منتج اختبار الخصم",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 100.0,
+            discountAmount = 100.0
+        )
+
+        assertTrue(result is SaleResult.Error)
+        assertEquals(0, db.saleDao().getSalesCount())
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
+    @Test
+    fun productDisabledAfterItWasAddedToCartIsRejected() = runBlocking {
+        val product = ProductEntity(
+            id = "disabled-product-validation",
+            name = "منتج تم تعطيله",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+        db.productDao().updateProduct(product.copy(isActive = false))
+
+        // The cart contains a stale active product object; the engine must reread Room.
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 100.0
+        )
+
+        assertTrue(result is SaleResult.Error)
+        assertEquals(0, db.saleDao().getSalesCount())
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
+    @Test
+    fun walletPaymentAutomaticallyGeneratesReferenceWhenCashierLeavesItBlank() = runBlocking {
+        val product = ProductEntity(
+            id = "wallet-reference-product",
+            name = "منتج محفظة",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.E_WALLET,
+            paymentReference = ""
+        )
+
+        assertTrue(result is SaleResult.Success)
+        val sale = (result as SaleResult.Success).sale
+        assertTrue(sale.paymentReference.startsWith("WAL-"))
+        assertTrue(sale.paymentReference.length > 12)
+        val shift = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals(100.0, shift.totalWalletSales, 0.001)
+        assertEquals(5000.0, shift.expectedCash, 0.001)
+    }
+
 }
