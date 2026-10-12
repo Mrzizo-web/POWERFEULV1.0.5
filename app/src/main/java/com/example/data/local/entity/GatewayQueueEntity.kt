@@ -10,7 +10,7 @@ data class GatewayQueueEntity(
     val type: String, // INCOMING_SMS, OUTGOING_SYNC, WALLET_NOTIFICATION
     val payload: String, // JSON payload or text
     val targetEndpoint: String = "", // e.g. http://192.168.1.100:8080/api/sync
-    val status: String = "PENDING", // PENDING, RETRYING, COMPLETED, FAILED
+    val status: String = "PENDING", // PENDING, IN_PROGRESS, RETRYING, COMPLETED, FAILED
     val retryCount: Int = 0,
     val maxRetries: Int = 5,
     val lastAttemptAt: Long = 0L,

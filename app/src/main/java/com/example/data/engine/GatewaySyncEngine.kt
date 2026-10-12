@@ -21,7 +21,12 @@ class GatewaySyncEngine(
     val pendingCount: Flow<Int> = queueDao.getPendingCount()
 
     init {
-        if (autoStartRetry) startPeriodicRetryLoop()
+        if (autoStartRetry) {
+            coroutineScope.launch {
+                queueDao.recoverInProgressItems()
+                startPeriodicRetryLoop()
+            }
+        }
     }
 
     fun stopPeriodicRetryLoop() {
@@ -42,10 +47,7 @@ class GatewaySyncEngine(
             nextAttemptAt = System.currentTimeMillis()
         )
         queueDao.insertItem(item)
-        // Attempt immediate dispatch asynchronously
-        coroutineScope.launch {
-            processQueueItem(item)
-        }
+        coroutineScope.launch { processQueueItem(item) }
         return item
     }
 
@@ -55,10 +57,12 @@ class GatewaySyncEngine(
             while (isActive) {
                 try {
                     retryPendingItems()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                delay(15_000L) // Check every 15 seconds
+                delay(15_000L)
             }
         }
     }
@@ -67,25 +71,18 @@ class GatewaySyncEngine(
         val now = System.currentTimeMillis()
         val pending = queueDao.getPendingQueueItemsSync()
         for (item in pending) {
-            if (now >= item.nextAttemptAt) {
-                processQueueItem(item)
-            }
+            if (now >= item.nextAttemptAt) processQueueItem(item)
         }
     }
 
     suspend fun retryNow(itemId: String) = withContext(Dispatchers.IO) {
-        val all = queueDao.getPendingQueueItemsSync()
-        val item = all.find { it.id == itemId }
-        if (item != null) {
-            processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
-        }
+        val item = queueDao.getPendingQueueItemsSync().firstOrNull { it.id == itemId }
+        if (item != null) processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
     }
 
     suspend fun retryAllNow() = withContext(Dispatchers.IO) {
         val pending = queueDao.getPendingQueueItemsSync()
-        for (item in pending) {
-            processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
-        }
+        for (item in pending) processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
     }
 
     suspend fun clearCompleted() = withContext(Dispatchers.IO) {
@@ -97,9 +94,12 @@ class GatewaySyncEngine(
     }
 
     private suspend fun processQueueItem(item: GatewayQueueEntity) {
+        val startedAt = System.currentTimeMillis()
+        if (queueDao.claimItem(item.id, startedAt) != 1) return
+        val claimedItem = item.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
+
         if (item.targetEndpoint.isBlank()) {
-            // Internal offline queue event (e.g. processed locally and acknowledged)
-            queueDao.updateItem(item.copy(status = "COMPLETED", lastAttemptAt = System.currentTimeMillis()))
+            queueDao.updateItem(claimedItem.copy(status = "COMPLETED", lastAttemptAt = System.currentTimeMillis()))
             return
         }
 
@@ -107,17 +107,23 @@ class GatewaySyncEngine(
             val success = sendHttpRequest(item.targetEndpoint, item.payload)
             if (success) {
                 queueDao.updateItem(
-                    item.copy(
+                    claimedItem.copy(
                         status = "COMPLETED",
                         lastAttemptAt = System.currentTimeMillis(),
                         errorMessage = ""
                     )
                 )
             } else {
-                handleFailure(item, "فشل الاتصال بنقطة النهاية: رمز خطأ غير متوقع")
+                handleFailure(claimedItem, "فشل الاتصال بنقطة النهاية: رمز خطأ غير متوقع")
             }
+        } catch (cancelled: CancellationException) {
+            // Return a claimed item to RETRYING before propagating cancellation.
+            queueDao.updateItem(
+                claimedItem.copy(status = "RETRYING", nextAttemptAt = System.currentTimeMillis())
+            )
+            throw cancelled
         } catch (e: Exception) {
-            handleFailure(item, e.localizedMessage ?: "فشل الاتصال بالشبكة المحلية")
+            handleFailure(claimedItem, e.localizedMessage ?: "فشل الاتصال بالشبكة المحلية")
         }
     }
 
@@ -131,14 +137,13 @@ class GatewaySyncEngine(
             4 -> 60L
             else -> 120L
         }
-        val nextTime = System.currentTimeMillis() + (backoffSeconds * 1000L)
-
+        val now = System.currentTimeMillis()
         queueDao.updateItem(
             item.copy(
                 status = if (isFinal) "FAILED" else "RETRYING",
                 retryCount = newRetry,
-                lastAttemptAt = System.currentTimeMillis(),
-                nextAttemptAt = nextTime,
+                lastAttemptAt = now,
+                nextAttemptAt = now + (backoffSeconds * 1000L),
                 errorMessage = error
             )
         )
@@ -153,12 +158,12 @@ class GatewaySyncEngine(
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
         }
-        OutputStreamWriter(conn.outputStream, "UTF-8").use {
-            it.write(body)
-            it.flush()
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+            val code = conn.responseCode
+            return code in 200..299
+        } finally {
+            conn.disconnect()
         }
-        val code = conn.responseCode
-        conn.disconnect()
-        return code in 200..299
     }
 }
