@@ -9,6 +9,7 @@ import com.example.data.local.entity.*
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.ShiftStatus
 import com.example.domain.model.UserRole
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -348,26 +349,29 @@ class RecipeAndSalesAndroidTest {
         )
         db.productDao().insertProduct(product)
 
-        val first = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-            salesEngine.executeSale(
-                shift = testShift,
-                user = testUser,
-                items = listOf(CartItem(product = product, quantity = 1)),
-                paymentMethod = PaymentMethod.CASH,
-                cashReceived = 100.0
-            )
+        val results = kotlinx.coroutines.coroutineScope {
+            val first = async(kotlinx.coroutines.Dispatchers.IO) {
+                salesEngine.executeSale(
+                    shift = testShift,
+                    user = testUser,
+                    items = listOf(CartItem(product = product, quantity = 1)),
+                    paymentMethod = PaymentMethod.CASH,
+                    cashReceived = 100.0
+                )
+            }
+            val second = async(kotlinx.coroutines.Dispatchers.IO) {
+                salesEngine.executeSale(
+                    shift = testShift,
+                    user = testUser,
+                    items = listOf(CartItem(product = product, quantity = 1)),
+                    paymentMethod = PaymentMethod.CASH,
+                    cashReceived = 100.0
+                )
+            }
+            first.await() to second.await()
         }
-        val second = kotlinx.coroutines.async(kotlinx.coroutines.Dispatchers.IO) {
-            salesEngine.executeSale(
-                shift = testShift,
-                user = testUser,
-                items = listOf(CartItem(product = product, quantity = 1)),
-                paymentMethod = PaymentMethod.CASH,
-                cashReceived = 100.0
-            )
-        }
-        val firstResult = first.await()
-        val secondResult = second.await()
+        val firstResult = results.first
+        val secondResult = results.second
         assertTrue(firstResult is SaleResult.Success)
         assertTrue(secondResult is SaleResult.Success)
         val firstInvoice = (firstResult as SaleResult.Success).invoiceNumber
