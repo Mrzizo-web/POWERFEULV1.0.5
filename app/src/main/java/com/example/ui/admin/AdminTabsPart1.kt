@@ -1,6 +1,8 @@
 package com.example.ui.admin
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -101,6 +103,11 @@ fun AdminProductsTab(
     }
 }
 
+private data class RecipeComponentDraft(
+    val materialId: String,
+    val amountText: String
+)
+
 @Composable
 fun AdminRecipesTab(
     recipes: List<RecipeEntity>,
@@ -111,9 +118,11 @@ fun AdminRecipesTab(
     var showDialog by remember { mutableStateOf(false) }
     var recipeName by remember { mutableStateOf("") }
     var selectedProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
-    var selectedMaterialId by remember { mutableStateOf(rawMaterials.firstOrNull()?.id ?: "") }
-    var materialAmountText by remember { mutableStateOf("30") }
     var recipeNotes by remember { mutableStateOf("") }
+    var recipeError by remember { mutableStateOf<String?>(null) }
+    var components by remember {
+        mutableStateOf(listOf(RecipeComponentDraft(rawMaterials.firstOrNull()?.id.orEmpty(), "30")))
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -121,8 +130,17 @@ fun AdminRecipesTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("الوصفات والخلطات (${recipes.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Button(onClick = { showDialog = true }) {
+            Text("الوصفات والخلطات (" + recipes.size + ")", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Button(
+                onClick = {
+                    recipeName = ""
+                    recipeNotes = ""
+                    recipeError = null
+                    selectedProductId = products.firstOrNull()?.id.orEmpty()
+                    components = listOf(RecipeComponentDraft(rawMaterials.firstOrNull()?.id.orEmpty(), "30"))
+                    showDialog = true
+                }
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("إضافة وصفة")
@@ -130,14 +148,23 @@ fun AdminRecipesTab(
         }
         Spacer(modifier = Modifier.height(12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-            items(recipes) { r ->
+            items(recipes) { recipe ->
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(r.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("التكلفة المحسوبة: ${r.calculatedCost} ريال • ${if (r.notes.isNotEmpty()) r.notes else "وصفة تصنيع نشطة"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Text(recipe.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            "المنتج: " + (products.firstOrNull { it.id == recipe.productId }?.name ?: "غير معروف") +
+                                " • الإصدار " + recipe.version +
+                                " • التكلفة: " + recipe.calculatedCost + " ريال",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (recipe.notes.isNotBlank()) {
+                            Text(recipe.notes, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -145,56 +172,187 @@ fun AdminRecipesTab(
     }
 
     if (showDialog) {
+        var productMenuExpanded by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("إضافة وصفة جديدة") },
+            title = { Text("إنشاء وصفة متعددة المكونات") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     OutlinedTextField(
                         value = recipeName,
-                        onValueChange = { recipeName = it },
-                        label = { Text("اسم الوصفة (مثال: بروتين شيك فانيلا)") },
+                        onValueChange = { recipeName = it; recipeError = null },
+                        label = { Text("اسم الوصفة") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedTextField(
-                        value = materialAmountText,
-                        onValueChange = { materialAmountText = it },
-                        label = { Text("كمية المادة الخام المستهلكة (جرام/مل)") },
-                        singleLine = true,
+
+                    Text("المنتج المرتبط بالوصفة", fontWeight = FontWeight.SemiBold)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { productMenuExpanded = true },
+                            enabled = products.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(products.firstOrNull { it.id == selectedProductId }?.name ?: "اختر المنتج")
+                        }
+                        DropdownMenu(
+                            expanded = productMenuExpanded,
+                            onDismissRequest = { productMenuExpanded = false }
+                        ) {
+                            products.filter { it.isActive && it.isAvailable }.forEach { product ->
+                                DropdownMenuItem(
+                                    text = { Text(product.name) },
+                                    onClick = {
+                                        selectedProductId = product.id
+                                        productMenuExpanded = false
+                                        recipeError = null
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Divider()
+                    Text("مكونات الوصفة", fontWeight = FontWeight.SemiBold)
+                    components.forEachIndexed { index, draft ->
+                        var materialMenuExpanded by remember(index) { mutableStateOf(false) }
+                        val chosenMaterial = rawMaterials.firstOrNull { it.id == draft.materialId }
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        OutlinedButton(
+                                            onClick = { materialMenuExpanded = true },
+                                            enabled = rawMaterials.isNotEmpty(),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(chosenMaterial?.name ?: "اختر المادة الخام")
+                                        }
+                                        DropdownMenu(
+                                            expanded = materialMenuExpanded,
+                                            onDismissRequest = { materialMenuExpanded = false }
+                                        ) {
+                                            rawMaterials.forEach { material ->
+                                                DropdownMenuItem(
+                                                    text = { Text(material.name + " (" + material.baseUnit + ")") },
+                                                    onClick = {
+                                                        components = components.mapIndexed { i, old ->
+                                                            if (i == index) old.copy(materialId = material.id) else old
+                                                        }
+                                                        materialMenuExpanded = false
+                                                        recipeError = null
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    IconButton(
+                                        enabled = components.size > 1,
+                                        onClick = {
+                                            components = components.filterIndexed { i, _ -> i != index }
+                                            recipeError = null
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف المكوّن")
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = draft.amountText,
+                                    onValueChange = { value ->
+                                        components = components.mapIndexed { i, old ->
+                                            if (i == index) old.copy(amountText = value) else old
+                                        }
+                                        recipeError = null
+                                    },
+                                    label = { Text("الكمية لكل حصة (" + (chosenMaterial?.baseUnit ?: "وحدة") + ")") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (chosenMaterial != null) {
+                                    Text(
+                                        "تكلفة تقديرية للمكوّن: " +
+                                            ((draft.amountText.toDoubleOrNull() ?: 0.0) * chosenMaterial.avgCostPerUnit) + " ريال",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val firstMaterial = rawMaterials.firstOrNull()
+                            if (firstMaterial == null) {
+                                recipeError = "أضف المواد الخام إلى المخزون أولًا"
+                            } else {
+                                components = components + RecipeComponentDraft(firstMaterial.id, "30")
+                                recipeError = null
+                            }
+                        },
+                        enabled = rawMaterials.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth()
-                    )
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("إضافة مكوّن آخر")
+                    }
+
                     OutlinedTextField(
                         value = recipeNotes,
                         onValueChange = { recipeNotes = it },
-                        label = { Text("طريقة التحضير والتعليمات") },
+                        label = { Text("طريقة التحضير والملاحظات") },
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (recipeError != null) {
+                        Text(recipeError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val amount = materialAmountText.toDoubleOrNull() ?: 30.0
-                        val chosenMat = rawMaterials.firstOrNull { it.id == selectedMaterialId } ?: rawMaterials.firstOrNull()
-                        val unitCost = chosenMat?.avgCostPerUnit ?: 0.0
-                        val items = if (chosenMat != null) {
-                            listOf(
+                        val parsedItems = components.mapNotNull { draft ->
+                            val material = rawMaterials.firstOrNull { it.id == draft.materialId }
+                            val amount = draft.amountText.toDoubleOrNull()
+                            if (material == null || amount == null || !amount.isFinite() || amount <= 0.0) {
+                                null
+                            } else {
                                 RecipeItemEntity(
                                     recipeId = "",
-                                    rawMaterialId = chosenMat.id,
-                                    name = chosenMat.name,
+                                    rawMaterialId = material.id,
+                                    name = material.name,
                                     amount = amount,
                                     quantity = amount,
-                                    unit = chosenMat.baseUnit,
-                                    costContribution = unitCost * amount
+                                    unit = material.baseUnit,
+                                    costContribution = material.avgCostPerUnit * amount
                                 )
-                            )
-                        } else emptyList()
-                        if (recipeName.isNotBlank()) {
-                            onAddRecipe(recipeName, selectedProductId, items, recipeNotes)
-                            showDialog = false
-                            recipeName = ""
+                            }
+                        }
+                        when {
+                            recipeName.isBlank() -> recipeError = "اكتب اسم الوصفة"
+                            selectedProductId.isBlank() -> recipeError = "اختر المنتج المرتبط بالوصفة"
+                            rawMaterials.isEmpty() -> recipeError = "أضف المواد الخام أولًا"
+                            parsedItems.size != components.size -> recipeError = "راجع كميات ومكونات الوصفة؛ يجب أن تكون كل الكميات أكبر من صفر"
+                            else -> {
+                                onAddRecipe(recipeName.trim(), selectedProductId, parsedItems, recipeNotes.trim())
+                                showDialog = false
+                            }
                         }
                     }
                 ) {
