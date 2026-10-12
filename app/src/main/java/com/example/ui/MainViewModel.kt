@@ -1,7 +1,6 @@
 package com.example.ui
 
 import android.app.Application
-import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.engine.*
@@ -56,29 +55,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 DatabaseSeeder.seedIfNeeded(db)
 
-                // Apply the requested initial owner PIN once, including installations
-                // that already had a seeded owner account before this fix.
-                val migrationPrefs = getApplication<Application>().getSharedPreferences(
-                    "power_feul_pos_migrations",
-                    Context.MODE_PRIVATE
-                )
-                if (!migrationPrefs.getBoolean("owner_initial_pin_applied", false)) {
-                    val owner = db.userDao().getUserById("user-owner-ziad")
-                    if (owner != null) {
-                        val initialPin = charArrayOf('7', '7', '5', '1', '5', '2').concatToString()
-                        val credentials = passwordHasher.hash(initialPin)
-                        db.userDao().updateUser(
-                            owner.copy(
-                                pinHash = credentials.hashHex,
-                                pinSalt = credentials.saltHex,
-                                failedAttempts = 0,
-                                lockedUntil = null,
-                                updatedAt = System.currentTimeMillis()
-                            )
-                        )
-                        migrationPrefs.edit().putBoolean("owner_initial_pin_applied", true).commit()
-                    }
-                }
             } catch (error: Exception) {
                 withContext(Dispatchers.Main) {
                     loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
