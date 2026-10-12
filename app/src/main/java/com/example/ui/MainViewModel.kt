@@ -905,6 +905,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (isGatewayRunning.value) {
             gatewayServer?.stop()
             gatewayServer = null
+            com.example.gateway.GatewayService.stopGateway(getApplication())
             isGatewayRunning.value = false
             snackbarMessage.value = "تم إيقاف خادم بوابة الرسائل"
         } else {
