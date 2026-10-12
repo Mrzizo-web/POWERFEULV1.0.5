@@ -5,6 +5,7 @@ import com.example.data.engine.GatewaySyncEngine
 import com.example.data.engine.IngestResult
 import com.example.data.engine.WalletMatchingEngine
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.CafeteriaSettingEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,7 +16,6 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.net.ServerSocket
 import java.net.Socket
-import java.util.concurrent.ConcurrentHashMap
 
 class GatewayServer(
     private val db: AppDatabase,
@@ -29,10 +29,6 @@ class GatewayServer(
     @Volatile
     var isRunning: Boolean = false
         private set
-
-    // Replay protection for read/retry operations during this server lifetime.
-    // SMS ingestion also has durable idempotency in WalletMatchingEngine's Room records.
-    private val seenRequestIds = ConcurrentHashMap<String, Long>()
 
     fun start(): Boolean {
         if (isRunning) return true
@@ -329,15 +325,18 @@ class GatewayServer(
         return ""
     }
 
-    private fun claimRequestId(deviceId: String, eventId: String): Boolean {
+    private suspend fun claimRequestId(deviceId: String, eventId: String): Boolean {
+        // Keep only recent nonces, but persist them so a service/app restart cannot
+        // reopen the replay window for a captured valid request.
         val now = System.currentTimeMillis()
-        for ((key, timestamp) in seenRequestIds.entries) {
-            if (now - timestamp > GatewayRequestSigner.MAX_CLOCK_SKEW_MS * 2) {
-                seenRequestIds.remove(key, timestamp)
-            }
-        }
-        if (seenRequestIds.size > MAX_CACHED_REQUESTS) seenRequestIds.clear()
-        return seenRequestIds.putIfAbsent("$deviceId:$eventId", now) == null
+        db.settingsDao().deleteExpiredGatewayNonces(
+            now - GatewayRequestSigner.MAX_CLOCK_SKEW_MS * 2
+        )
+        val key = "gateway_nonce:" + deviceId + ":" + eventId
+        val inserted = db.settingsDao().insertSettingIfMissing(
+            CafeteriaSettingEntity(key = key, value = now.toString())
+        )
+        return inserted != -1L
     }
 
     companion object {
