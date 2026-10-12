@@ -139,6 +139,15 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                selectedUser?.takeIf { it.requiresPinSetup }?.let {
+                    Text(
+                        text = "أول تشغيل للمالك: أدخل رمزًا من 4 إلى 6 أرقام ليصبح PIN الخاص بالمالك. لن يوجد رمز افتراضي.",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // PIN Dots
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -253,7 +262,11 @@ fun LoginScreen(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("دخول إلى النظام", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (selectedUser?.requiresPinSetup == true) "إنشاء PIN للمالك والدخول" else "دخول إلى النظام",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }

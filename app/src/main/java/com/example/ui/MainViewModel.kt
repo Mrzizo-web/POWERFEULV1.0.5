@@ -116,7 +116,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     role = it.role,
                     phone = it.phone,
                     isLocked = isLocked,
-                    remainingLockSeconds = remainingSec
+                    remainingLockSeconds = remainingSec,
+                    requiresPinSetup = it.id == OwnerPinSetupManager.INITIAL_OWNER_ID &&
+                        it.pinHash.isBlank() && it.pinSalt.isBlank()
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -205,6 +207,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val user = db.userDao().getUserById(userId)
             if (user == null || !user.isActive) {
                 loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"
+                return@launch
+            }
+            if (user.pinHash.isBlank() && user.pinSalt.isBlank()) {
+                if (user.id != OwnerPinSetupManager.INITIAL_OWNER_ID || user.role != UserRole.OWNER) {
+                    loginErrorMessage.value = "بيانات PIN غير مهيأة لهذا المستخدم. اطلب من المالك إصلاح الحساب."
+                    return@launch
+                }
+                val initialized = try {
+                    OwnerPinSetupManager(db, passwordHasher).setInitialPin(user.id, rawPin)
+                } catch (error: Exception) {
+                    loginErrorMessage.value = error.message ?: "تعذر إعداد PIN الأول للمالك"
+                    return@launch
+                }
+                _currentUser.value = initialized
+                sessionManager.unlock()
+                db.auditLogDao().insertLog(
+                    AuditLogEntity(
+                        userId = initialized.id,
+                        userName = initialized.name,
+                        userRole = initialized.role.name,
+                        action = "تسجيل دخول",
+                        notes = "تم تسجيل الدخول بعد إعداد PIN الأول للمالك"
+                    )
+                )
+                _activeScreen.value = AppScreen.POS
+                loginErrorMessage.value = null
+                snackbarMessage.value = "تم إنشاء PIN الخاص بالمالك. احفظه بأمان؛ لن يُعرض مرة أخرى."
+                return@launch
+            }
+            if (user.pinHash.isBlank() || user.pinSalt.isBlank()) {
+                loginErrorMessage.value = "بيانات PIN لهذا الحساب غير مكتملة. تواصل مع المالك."
                 return@launch
             }
             if (lockoutPolicy.isCurrentlyLocked(user.lockedUntil)) {

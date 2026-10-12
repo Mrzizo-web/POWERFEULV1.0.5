@@ -7,5 +7,6 @@ data class UserProfile(
     val role: UserRole,
     val phone: String,
     val isLocked: Boolean,
-    val remainingLockSeconds: Long
+    val remainingLockSeconds: Long,
+    val requiresPinSetup: Boolean = false
 )

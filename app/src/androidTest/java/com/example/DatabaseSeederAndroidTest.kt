@@ -36,7 +36,10 @@ class DatabaseSeederAndroidTest {
     fun freshDatabaseSeedsAnOwnerVisibleToLoginFlow() = runBlocking {
         DatabaseSeeder.seedIfNeeded(db)
         val activeUsers = db.userDao().getAllActiveUsers().first()
-        assertTrue("Owner should be visible after seeding", activeUsers.any { it.id == "user-owner-ziad" })
+        val owner = activeUsers.firstOrNull { it.id == "user-owner-ziad" }
+        assertTrue("Owner should be visible after seeding", owner != null)
+        assertTrue("Fresh owner account must not contain a default PIN hash", owner!!.pinHash.isBlank())
+        assertTrue("Fresh owner account must not contain a default PIN salt", owner.pinSalt.isBlank())
     }
 
     @Test
