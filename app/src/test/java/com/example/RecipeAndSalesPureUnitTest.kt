@@ -49,9 +49,13 @@ class RecipeAndSalesPureUnitTest {
         assertEquals(60.0, expectedTotalDeduction["honey"]!!, 0.001)
     }
 
-    @Test
-    fun testIncompatibleUnitConversionSafelyReturnsSameAmount() {
-        val converted = UnitConverter.convert(100.0, "g", "ml")
-        assertEquals(100.0, converted, 0.0001)
+    @Test(expected = IllegalArgumentException::class)
+    fun testIncompatibleUnitConversionIsRejected() {
+        UnitConverter.convert(100.0, "g", "ml")
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun testUnknownUnitIsRejected() {
+        UnitConverter.convert(100.0, "scoop", "g")
     }
 }

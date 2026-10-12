@@ -12,6 +12,9 @@ interface InventoryTransactionDao {
     @Query("SELECT * FROM inventory_transactions WHERE rawMaterialId = :materialId ORDER BY createdAt DESC")
     fun getTransactionsForMaterial(materialId: String): Flow<List<InventoryTransactionEntity>>
 
+    @Query("SELECT * FROM inventory_transactions WHERE referenceId = :referenceId ORDER BY createdAt ASC")
+    suspend fun getTransactionsByReference(referenceId: String): List<InventoryTransactionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(tx: InventoryTransactionEntity)
 
