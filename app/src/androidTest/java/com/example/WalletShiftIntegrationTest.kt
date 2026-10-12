@@ -56,7 +56,7 @@ class WalletShiftIntegrationTest {
 
         val engine = WalletMatchingEngine(db)
         val result = engine.ingestSms(
-            sender = "Jaib",
+            sender = "JEEB",
             body = "اضيف 5000 ر.ي تحويل مشترك رص:72758.47ر.ي من عبدالله الجميلي-77366225",
             receivedAt = 5_000L,
             sourceSmsId = "gateway-event-received-at-1"
