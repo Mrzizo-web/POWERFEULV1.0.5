@@ -87,7 +87,16 @@ object GatewayClient {
         var connection: HttpURLConnection? = null
         return try {
             val timestamp = System.currentTimeMillis().toString()
-            val signature = GatewayRequestSigner.sign(token, timestamp, eventId, deviceId, body)
+            val requestPath = URL(url).path
+            val signature = GatewayRequestSigner.sign(
+                token = token,
+                method = method,
+                path = requestPath,
+                timestamp = timestamp,
+                eventId = eventId,
+                deviceId = deviceId,
+                body = body
+            )
             connection = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = method
                 connectTimeout = 4000
