@@ -69,18 +69,25 @@ class GatewayServerSecurityAndroidTest {
     }
 
     @Test
-    fun httpServerRejectsUnsignedAccessToDataEndpoints() {
-        for (path in listOf("/api/status", "/api/wallets", "/api/transactions")) {
+    fun httpServerRejectsUnsignedAccessToEveryProtectedEndpoint() {
+        val routes = listOf(
+            "GET" to "/api/status",
+            "GET" to "/api/wallets",
+            "GET" to "/api/transactions",
+            "POST" to "/api/sms/ingest",
+            "POST" to "/api/queue/retry"
+        )
+        for ((method, path) in routes) {
             val response = sendRequest(
-                method = "GET",
+                method = method,
                 path = path,
                 headers = mapOf(
                     "X-Gateway-Token" to token,
                     "X-Gateway-Device-Id" to deviceId
                 ),
-                body = ""
+                body = if (method == "POST") "{}" else ""
             )
-            assertTrue("$path should reject a Token-only request: $response", response.startsWith("HTTP/1.1 401"))
+            assertTrue("$method $path should reject a Token-only request: $response", response.startsWith("HTTP/1.1 401"))
         }
     }
 
@@ -98,6 +105,8 @@ class GatewayServerSecurityAndroidTest {
 
         val accepted = sendRequest("GET", "/api/status", headers, "")
         assertTrue("Signed status request should succeed: $accepted", accepted.startsWith("HTTP/1.1 200"))
+        val copiedToWallets = sendRequest("GET", "/api/wallets", headers, "")
+        assertTrue("A status signature must not authorize /api/wallets: $copiedToWallets", copiedToWallets.startsWith("HTTP/1.1 401"))
         val replay = sendRequest("GET", "/api/status", headers, "")
         assertTrue("Replaying a signed request ID should be rejected: $replay", replay.startsWith("HTTP/1.1 409"))
     }
