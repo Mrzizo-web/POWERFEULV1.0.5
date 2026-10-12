@@ -104,8 +104,9 @@ fun AdminProductsTab(
 }
 
 private data class RecipeComponentDraft(
-    val materialId: String,
-    val amountText: String
+    val sourceId: String,
+    val amountText: String,
+    val sourceType: String = "RAW"
 )
 
 @Composable
@@ -113,15 +114,22 @@ fun AdminRecipesTab(
     recipes: List<RecipeEntity>,
     rawMaterials: List<RawMaterialEntity>,
     products: List<ProductEntity> = emptyList(),
-    onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> }
+    onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
+    mixtures: List<MixtureEntity> = emptyList()
 ) {
+    fun initialComponent(): RecipeComponentDraft = when {
+        rawMaterials.isNotEmpty() -> RecipeComponentDraft(rawMaterials.first().id, "30", "RAW")
+        mixtures.isNotEmpty() -> RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE")
+        else -> RecipeComponentDraft("", "30", "RAW")
+    }
+
     var showDialog by remember { mutableStateOf(false) }
     var recipeName by remember { mutableStateOf("") }
     var selectedProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
     var recipeNotes by remember { mutableStateOf("") }
     var recipeError by remember { mutableStateOf<String?>(null) }
     var components by remember {
-        mutableStateOf(listOf(RecipeComponentDraft(rawMaterials.firstOrNull()?.id.orEmpty(), "30")))
+        mutableStateOf(listOf(initialComponent()))
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -137,7 +145,7 @@ fun AdminRecipesTab(
                     recipeNotes = ""
                     recipeError = null
                     selectedProductId = products.firstOrNull()?.id.orEmpty()
-                    components = listOf(RecipeComponentDraft(rawMaterials.firstOrNull()?.id.orEmpty(), "30"))
+                    components = listOf(initialComponent())
                     showDialog = true
                 }
             ) {
@@ -196,7 +204,7 @@ fun AdminRecipesTab(
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = { productMenuExpanded = true },
-                            enabled = products.isNotEmpty(),
+                            enabled = products.any { it.isActive && it.isAvailable },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(products.firstOrNull { it.id == selectedProductId }?.name ?: "اختر المنتج")
@@ -221,8 +229,17 @@ fun AdminRecipesTab(
                     Divider()
                     Text("مكونات الوصفة", fontWeight = FontWeight.SemiBold)
                     components.forEachIndexed { index, draft ->
-                        var materialMenuExpanded by remember(index) { mutableStateOf(false) }
-                        val chosenMaterial = rawMaterials.firstOrNull { it.id == draft.materialId }
+                        var sourceMenuExpanded by remember(index) { mutableStateOf(false) }
+                        val chosenMaterial = if (draft.sourceType == "RAW") {
+                            rawMaterials.firstOrNull { it.id == draft.sourceId }
+                        } else null
+                        val chosenMixture = if (draft.sourceType == "MIXTURE") {
+                            mixtures.firstOrNull { it.id == draft.sourceId }
+                        } else null
+                        val hasSources = if (draft.sourceType == "RAW") rawMaterials.isNotEmpty() else mixtures.isNotEmpty()
+                        val chosenName = chosenMaterial?.name ?: chosenMixture?.name ?: "اختر المكوّن"
+                        val chosenUnit = chosenMaterial?.baseUnit ?: chosenMixture?.unit ?: "وحدة"
+
                         Card(
                             shape = RoundedCornerShape(10.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -231,33 +248,67 @@ fun AdminRecipesTab(
                                 modifier = Modifier.fillMaxWidth().padding(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val nextType = if (draft.sourceType == "RAW") "MIXTURE" else "RAW"
+                                        val nextId = if (nextType == "RAW") {
+                                            rawMaterials.firstOrNull()?.id.orEmpty()
+                                        } else {
+                                            mixtures.firstOrNull()?.id.orEmpty()
+                                        }
+                                        components = components.mapIndexed { i, old ->
+                                            if (i == index) old.copy(sourceId = nextId, sourceType = nextType) else old
+                                        }
+                                        recipeError = null
+                                    },
+                                    enabled = if (draft.sourceType == "RAW") mixtures.isNotEmpty() else rawMaterials.isNotEmpty(),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(if (draft.sourceType == "RAW") "المكوّن الحالي: مادة خام • اضغط لاختيار خلطة" else "المكوّن الحالي: خلطة • اضغط لاختيار مادة خام")
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box(modifier = Modifier.weight(1f)) {
                                         OutlinedButton(
-                                            onClick = { materialMenuExpanded = true },
-                                            enabled = rawMaterials.isNotEmpty(),
+                                            onClick = { sourceMenuExpanded = true },
+                                            enabled = hasSources,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(chosenMaterial?.name ?: "اختر المادة الخام")
+                                            Text(chosenName + " (" + chosenUnit + ")")
                                         }
                                         DropdownMenu(
-                                            expanded = materialMenuExpanded,
-                                            onDismissRequest = { materialMenuExpanded = false }
+                                            expanded = sourceMenuExpanded,
+                                            onDismissRequest = { sourceMenuExpanded = false }
                                         ) {
-                                            rawMaterials.forEach { material ->
-                                                DropdownMenuItem(
-                                                    text = { Text(material.name + " (" + material.baseUnit + ")") },
-                                                    onClick = {
-                                                        components = components.mapIndexed { i, old ->
-                                                            if (i == index) old.copy(materialId = material.id) else old
+                                            if (draft.sourceType == "RAW") {
+                                                rawMaterials.forEach { material ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(material.name + " (" + material.baseUnit + ")") },
+                                                        onClick = {
+                                                            components = components.mapIndexed { i, old ->
+                                                                if (i == index) old.copy(sourceId = material.id) else old
+                                                            }
+                                                            sourceMenuExpanded = false
+                                                            recipeError = null
                                                         }
-                                                        materialMenuExpanded = false
-                                                        recipeError = null
-                                                    }
-                                                )
+                                                    )
+                                                }
+                                            } else {
+                                                mixtures.forEach { mixture ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(mixture.name + " (" + mixture.unit + ")") },
+                                                        onClick = {
+                                                            components = components.mapIndexed { i, old ->
+                                                                if (i == index) old.copy(sourceId = mixture.id) else old
+                                                            }
+                                                            sourceMenuExpanded = false
+                                                            recipeError = null
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -271,6 +322,7 @@ fun AdminRecipesTab(
                                         Icon(Icons.Default.Delete, contentDescription = "حذف المكوّن")
                                     }
                                 }
+
                                 OutlinedTextField(
                                     value = draft.amountText,
                                     onValueChange = { value ->
@@ -279,14 +331,19 @@ fun AdminRecipesTab(
                                         }
                                         recipeError = null
                                     },
-                                    label = { Text("الكمية لكل حصة (" + (chosenMaterial?.baseUnit ?: "وحدة") + ")") },
+                                    label = { Text("الكمية لكل حصة (" + chosenUnit + ")") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                if (chosenMaterial != null) {
+                                val amount = draft.amountText.toDoubleOrNull() ?: 0.0
+                                val estimate = when {
+                                    chosenMaterial != null -> amount * chosenMaterial.avgCostPerUnit
+                                    chosenMixture != null && chosenMixture.unitCost.isFinite() -> amount * chosenMixture.unitCost
+                                    else -> 0.0
+                                }
+                                if (chosenMaterial != null || chosenMixture != null) {
                                     Text(
-                                        "تكلفة تقديرية للمكوّن: " +
-                                            ((draft.amountText.toDoubleOrNull() ?: 0.0) * chosenMaterial.avgCostPerUnit) + " ريال",
+                                        "تكلفة تقديرية للمكوّن: " + estimate + " ريال",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -297,15 +354,19 @@ fun AdminRecipesTab(
 
                     OutlinedButton(
                         onClick = {
-                            val firstMaterial = rawMaterials.firstOrNull()
-                            if (firstMaterial == null) {
-                                recipeError = "أضف المواد الخام إلى المخزون أولًا"
-                            } else {
-                                components = components + RecipeComponentDraft(firstMaterial.id, "30")
-                                recipeError = null
+                            when {
+                                rawMaterials.isNotEmpty() -> {
+                                    components = components + RecipeComponentDraft(rawMaterials.first().id, "30", "RAW")
+                                    recipeError = null
+                                }
+                                mixtures.isNotEmpty() -> {
+                                    components = components + RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE")
+                                    recipeError = null
+                                }
+                                else -> recipeError = "أضف مادة خام أو خلطة أولًا"
                             }
                         },
-                        enabled = rawMaterials.isNotEmpty(),
+                        enabled = rawMaterials.isNotEmpty() || mixtures.isNotEmpty(),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
@@ -328,26 +389,41 @@ fun AdminRecipesTab(
                 Button(
                     onClick = {
                         val parsedItems = components.mapNotNull { draft ->
-                            val material = rawMaterials.firstOrNull { it.id == draft.materialId }
                             val amount = draft.amountText.toDoubleOrNull()
-                            if (material == null || amount == null || !amount.isFinite() || amount <= 0.0) {
+                            if (amount == null || !amount.isFinite() || amount <= 0.0) {
                                 null
-                            } else {
+                            } else if (draft.sourceType == "RAW") {
+                                val material = rawMaterials.firstOrNull { it.id == draft.sourceId }
+                                    ?: return@Button.also { recipeError = "اختر مادة خام صالحة لكل مكوّن" }
                                 RecipeItemEntity(
                                     recipeId = "",
                                     rawMaterialId = material.id,
+                                    mixtureId = "",
                                     name = material.name,
                                     amount = amount,
                                     quantity = amount,
                                     unit = material.baseUnit,
                                     costContribution = material.avgCostPerUnit * amount
                                 )
+                            } else {
+                                val mixture = mixtures.firstOrNull { it.id == draft.sourceId }
+                                    ?: return@Button.also { recipeError = "اختر خلطة صالحة لكل مكوّن" }
+                                RecipeItemEntity(
+                                    recipeId = "",
+                                    rawMaterialId = "",
+                                    mixtureId = mixture.id,
+                                    name = mixture.name,
+                                    amount = amount,
+                                    quantity = amount,
+                                    unit = mixture.unit,
+                                    costContribution = mixture.unitCost * amount
+                                )
                             }
                         }
                         when {
                             recipeName.isBlank() -> recipeError = "اكتب اسم الوصفة"
                             selectedProductId.isBlank() -> recipeError = "اختر المنتج المرتبط بالوصفة"
-                            rawMaterials.isEmpty() -> recipeError = "أضف المواد الخام أولًا"
+                            rawMaterials.isEmpty() && mixtures.isEmpty() -> recipeError = "أضف المواد الخام أو الخلطات أولًا"
                             parsedItems.size != components.size -> recipeError = "راجع كميات ومكونات الوصفة؛ يجب أن تكون كل الكميات أكبر من صفر"
                             else -> {
                                 onAddRecipe(recipeName.trim(), selectedProductId, parsedItems, recipeNotes.trim())
