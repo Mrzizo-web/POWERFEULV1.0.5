@@ -918,7 +918,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             snackbarMessage.value = "تم إيقاف خادم بوابة الرسائل"
         } else {
             val port = gatewayPort.value
-            gatewayServer = com.example.gateway.GatewayServer(db, walletMatchingEngine, port)
+            gatewayServer = com.example.gateway.GatewayServer(db, walletMatchingEngine, port, gatewaySyncEngine = gatewaySyncEngine, context = getApplication())
             val started = gatewayServer?.start() == true
             isGatewayRunning.value = started
             gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
