@@ -70,8 +70,6 @@ interface WalletDao {
     @Query("SELECT * FROM wallet_transactions WHERE walletCode = :walletCode AND transactionId = :txId LIMIT 1")
     suspend fun findTransactionByTxId(walletCode: String, txId: String): WalletTransactionEntity?
 
-    @Query("SELECT * FROM wallet_transactions WHERE walletCode = :walletCode AND amount = :amount AND sender = :sender AND receivedAt BETWEEN :minTime AND :maxTime LIMIT 1")
-    suspend fun findPotentialDuplicate(walletCode: String, amount: Double, sender: String, minTime: Long, maxTime: Long): WalletTransactionEntity?
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertTransaction(tx: WalletTransactionEntity)

@@ -36,6 +36,11 @@ jobs:
             exit 1
           fi
 
+          if grep -R --include='*.kt' -n 'findPotentialDuplicate\|findRecentSimilar\|timeWindowMillis' app/src; then
+            echo 'ERROR: heuristic wallet matching by amount, sender, or time is forbidden.'
+            exit 1
+          fi
+
       - name: Unit tests
         run: gradle testDebugUnitTest
       - name: Build debug APK

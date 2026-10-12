@@ -112,12 +112,12 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                         action = "DUPLICATE_SMS_DETECTED",
                         entityType = "WALLET_TX",
                         entityId = existingTx.id,
-                        newValue = "\${parsed.amount} ريال (\${parsed.transactionId})",
+                        newValue = "${parsed.amount} ريال (${parsed.transactionId})",
                         notes = "تم اكتشاف التكرار بواسطة رقم المرجع/المعاملة"
                     )
                 )
             }
-            return IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس رقم المرجع \${existingTx.transactionId}")
+            return IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس رقم المرجع ${existingTx.transactionId}")
         }
 
         // Critical: resolve the shift from the SMS arrival time, not processing time.
@@ -140,7 +140,7 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             notes = if (isOutOfShift) {
                 "وصلت خارج نطاق أي شفت بحسب receivedAt"
             } else {
-                "مرتبطة بالشفت \${shift.userName} بحسب receivedAt"
+                "مرتبطة بالشفت ${shift.userName} بحسب receivedAt"
             }
         )
 
@@ -168,11 +168,11 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                     action = if (isOutOfShift) "WALLET_TX_OUT_OF_SHIFT" else "WALLET_TX_RECEIVED",
                     entityType = "WALLET_TX",
                     entityId = tx.id,
-                    newValue = "\${tx.amount} ريال (\${tx.walletCode})",
+                    newValue = "${tx.amount} ريال (${tx.walletCode})",
                     notes = if (isOutOfShift) {
                         "حوالة واردة بدون شفت يحتوي receivedAt"
                     } else {
-                        "حوالة واردة مرتبطة بشفت \${shift?.userName} حسب receivedAt"
+                        "حوالة واردة مرتبطة بشفت ${shift?.userName} حسب receivedAt"
                     }
                 )
             )
@@ -214,7 +214,7 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                     entityId = txId,
                     previousValue = prev.name,
                     newValue = newStatus.name,
-                    notes = reason.ifEmpty { "تعديل حالة الحوالة إلى \${newStatus.titleAr}" }
+                    notes = reason.ifEmpty { "تعديل حالة الحوالة إلى ${newStatus.titleAr}" }
                 )
             )
         }
