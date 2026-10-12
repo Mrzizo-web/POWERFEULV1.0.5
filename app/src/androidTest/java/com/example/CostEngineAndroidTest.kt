@@ -52,7 +52,8 @@ class CostEngineAndroidTest {
                 id = "cost-mixture",
                 name = "خلطة شوفان",
                 outputQuantity = 100.0,
-                unit = "g"
+                unit = "g",
+                unitCost = 999.0
             )
         )
         db.mixtureDao().insertMixtureItems(
