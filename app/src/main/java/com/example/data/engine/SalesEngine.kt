@@ -55,29 +55,9 @@ class SalesEngine(
             cashReceived - netAmount
         } else 0.0
 
-        val count = saleDao.getSalesCount() + 1
-        val dateStr = SimpleDateFormat("yyMMdd", Locale.ENGLISH).format(Date())
-        val invoiceNumber = "INV-$dateStr-%04d".format(count)
         val saleId = UUID.randomUUID().toString()
-
-        val saleEntity = SaleEntity(
-            id = saleId,
-            invoiceNumber = invoiceNumber,
-            shiftId = shift.id,
-            userId = user.id,
-            userName = user.name,
-            customerId = customer?.id ?: "",
-            customerName = customer?.name ?: "",
-            totalAmount = totalAmount,
-            discountAmount = discountAmount,
-            netAmount = netAmount,
-            paymentMethod = paymentMethod,
-            paymentReference = paymentReference,
-            cashReceived = cashReceived,
-            cashChange = cashChange,
-            totalCost = items.sumOf { it.product.costPrice * it.quantity },
-            notes = notes
-        )
+        var invoiceNumber = ""
+        var saleEntity: SaleEntity? = null
 
         try {
         db.withTransaction {
@@ -97,7 +77,30 @@ class SalesEngine(
                         }
                         customer = refreshedCustomer
                     }
-                    saleDao.insertSale(saleEntity)
+                    // Allocate invoice number under the same serialized Room transaction.
+                    val count = saleDao.getSalesCount() + 1
+                    val dateStr = SimpleDateFormat("yyMMdd", Locale.ENGLISH).format(Date())
+                    invoiceNumber = "INV-$dateStr-%04d".format(count)
+                    val saleRecord = SaleEntity(
+                        id = saleId,
+                        invoiceNumber = invoiceNumber,
+                        shiftId = shift.id,
+                        userId = user.id,
+                        userName = user.name,
+                        customerId = customer?.id ?: "",
+                        customerName = customer?.name ?: "",
+                        totalAmount = totalAmount,
+                        discountAmount = discountAmount,
+                        netAmount = netAmount,
+                        paymentMethod = paymentMethod,
+                        paymentReference = paymentReference,
+                        cashReceived = cashReceived,
+                        cashChange = cashChange,
+                        totalCost = items.sumOf { it.product.costPrice * it.quantity },
+                        notes = notes
+                    )
+                    saleEntity = saleRecord
+                    saleDao.insertSale(saleRecord)
 
                     val saleItems = items.map { item ->
                         SaleItemEntity(
@@ -181,7 +184,7 @@ class SalesEngine(
         } catch (e: Exception) {
             return SaleResult.Error(e.message ?: "تعذر إتمام البيع. تم التراجع عن التغييرات.")
         }
-        return SaleResult.Success(saleEntity, invoiceNumber, cashChange)
+        return SaleResult.Success(requireNotNull(saleEntity), invoiceNumber, cashChange)
     }
 
     suspend fun voidSale(
@@ -213,7 +216,7 @@ class SalesEngine(
                     val reversedShift = when (sale.paymentMethod) {
                         PaymentMethod.CASH -> shift.copy(
                             totalCashSales = (shift.totalCashSales - sale.netAmount).coerceAtLeast(0.0),
-                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(shift.openingCash)
+                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(0.0)
                         )
                         PaymentMethod.E_WALLET -> shift.copy(
                             totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0)
