@@ -122,6 +122,9 @@ class RecipeAndSalesAndroidTest {
         assertTrue("Sale must succeed", saleResult is SaleResult.Success)
         val success = saleResult as SaleResult.Success
         assertEquals(4500.0, success.sale.netAmount, 0.001)
+        val shiftAfterSale = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals(4500.0, shiftAfterSale.totalCashSales, 0.001)
+        assertEquals(9500.0, shiftAfterSale.expectedCash, 0.001)
 
         // 5. Verify exact deductions:
         // Banana: 1000 - (100 * 3) = 700 g (Deduction: 300 g)
@@ -159,6 +162,11 @@ class RecipeAndSalesAndroidTest {
         val restoredMilk = db.rawMaterialDao().getRawMaterialById("mat-milk")!!
         assertEquals(1000.0, restoredBanana.currentStock, 0.001)
         assertEquals(1000.0, restoredMilk.currentStock, 0.001)
+        val restoredShift = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals(0.0, restoredShift.totalCashSales, 0.001)
+        assertEquals(5000.0, restoredShift.expectedCash, 0.001)
+        assertTrue("Repeated void must not restore inventory twice", salesEngine.voidSale(success.sale.id, "تكرار", testUser).isFailure)
+        assertEquals(1000.0, db.rawMaterialDao().getRawMaterialById("mat-banana")!!.currentStock, 0.001)
     }
     @Test
     fun testInsufficientRecipeStockRejectsSaleWithoutPartialWrites() = runBlocking {
@@ -241,6 +249,54 @@ class RecipeAndSalesAndroidTest {
         assertTrue(db.recipeDao().getRecipeById(second.id)!!.isActive)
         assertEquals(second.id, db.productDao().getProductById(product.id)!!.recipeId)
         assertEquals(2, db.recipeDao().getAllRecipesSync().size)
+    }
+
+    @Test
+    fun voidRestoresOriginalConsumptionAfterRecipeVersionChanges() = runBlocking {
+        val banana = RawMaterialEntity(id = "version-banana", name = "موز", baseUnit = "g", currentStock = 1000.0, avgCostPerUnit = 0.5)
+        val oats = RawMaterialEntity(id = "version-oats", name = "شوفان", baseUnit = "g", currentStock = 500.0, avgCostPerUnit = 0.2)
+        db.rawMaterialDao().insertRawMaterial(banana)
+        db.rawMaterialDao().insertRawMaterial(oats)
+        val product = ProductEntity(id = "version-product", name = "منتج إصدار الوصفة", categoryId = "cat-test", price = 100.0)
+        db.productDao().insertProduct(product)
+
+        val recipeManager = RecipeManager(db)
+        val original = recipeManager.saveRecipe(
+            "وصفة أصلية",
+            product.id,
+            listOf(
+                RecipeItemEntity(recipeId = "", rawMaterialId = banana.id, name = banana.name, amount = 100.0, quantity = 100.0, unit = "g"),
+                RecipeItemEntity(recipeId = "", rawMaterialId = oats.id, name = oats.name, amount = 10.0, quantity = 10.0, unit = "g")
+            ),
+            "وصفة البيع الأول",
+            testUser
+        )
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 2)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 200.0
+        )
+        assertTrue(result is SaleResult.Success)
+        val sale = (result as SaleResult.Success).sale
+        assertEquals(800.0, db.rawMaterialDao().getRawMaterialById(banana.id)!!.currentStock, 0.001)
+        assertEquals(480.0, db.rawMaterialDao().getRawMaterialById(oats.id)!!.currentStock, 0.001)
+
+        val revised = recipeManager.saveRecipe(
+            "وصفة معدلة",
+            product.id,
+            listOf(
+                RecipeItemEntity(recipeId = "", rawMaterialId = banana.id, name = banana.name, amount = 25.0, quantity = 25.0, unit = "g")
+            ),
+            "إصدار جديد لا يغيّر البيع التاريخي",
+            testUser
+        )
+        assertTrue(revised.version > original.version)
+
+        assertTrue(salesEngine.voidSale(sale.id, "اختبار استرجاع إصدار قديم", testUser).isSuccess)
+        assertEquals(1000.0, db.rawMaterialDao().getRawMaterialById(banana.id)!!.currentStock, 0.001)
+        assertEquals(500.0, db.rawMaterialDao().getRawMaterialById(oats.id)!!.currentStock, 0.001)
     }
 
 }
