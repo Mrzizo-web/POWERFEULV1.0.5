@@ -27,6 +27,7 @@ class GatewaySecretStore(context: Context) {
             val ciphertext = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
             val packed = cipher.iv + ciphertext
             check(prefs.edit().putString(TOKEN_KEY, Base64.encodeToString(packed, Base64.NO_WRAP)).commit())
+            true
         }.getOrDefault(false)
     }
 
