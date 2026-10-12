@@ -482,5 +482,98 @@ class RecipeAndSalesAndroidTest {
         assertEquals(100.0, shift.totalWalletSales, 0.001)
         assertEquals(5000.0, shift.expectedCash, 0.001)
     }
+    @Test
+    fun recipeUsingMixtureConvertsUnitsConsumesRawMaterialsAndRestoresOnVoid() = runBlocking {
+        val oats = RawMaterialEntity(
+            id = "mixture-test-oats",
+            name = "شوفان",
+            baseUnit = "g",
+            currentStock = 500.0,
+            avgCostPerUnit = 0.5,
+            lastPurchasePrice = 0.5
+        )
+        val honey = RawMaterialEntity(
+            id = "mixture-test-honey",
+            name = "عسل",
+            baseUnit = "g",
+            currentStock = 200.0,
+            avgCostPerUnit = 1.5,
+            lastPurchasePrice = 1.5
+        )
+        db.rawMaterialDao().insertRawMaterial(oats)
+        db.rawMaterialDao().insertRawMaterial(honey)
+        val product = ProductEntity(
+            id = "mixture-recipe-product",
+            name = "منتج بخلطة",
+            categoryId = "cat-test",
+            price = 100.0
+        )
+        db.productDao().insertProduct(product)
+        val mixture = MixtureEntity(
+            id = "mixture-recipe-mix",
+            name = "خلطة شوفان وعسل",
+            outputQuantity = 100.0,
+            unit = "g",
+            unitCost = 0.0
+        )
+        db.mixtureDao().insertMixture(mixture)
+        db.mixtureDao().insertMixtureItems(
+            listOf(
+                MixtureItemEntity(
+                    mixtureId = mixture.id,
+                    rawMaterialId = oats.id,
+                    name = oats.name,
+                    quantity = 80.0,
+                    unit = "g"
+                ),
+                MixtureItemEntity(
+                    mixtureId = mixture.id,
+                    rawMaterialId = honey.id,
+                    name = honey.name,
+                    quantity = 20.0,
+                    unit = "g"
+                )
+            )
+        )
+
+        val recipe = RecipeManager(db).saveRecipe(
+            name = "وصفة بخلطة جاهزة",
+            productId = product.id,
+            items = listOf(
+                RecipeItemEntity(
+                    recipeId = "",
+                    rawMaterialId = "",
+                    mixtureId = mixture.id,
+                    name = mixture.name,
+                    amount = 0.05,
+                    quantity = 0.05,
+                    unit = "kg"
+                )
+            ),
+            notes = "اختبار تحويل 0.05 كجم إلى 50 جرام",
+            user = testUser
+        )
+
+        assertEquals(35.0, recipe.calculatedCost, 0.001)
+        val currentProduct = db.productDao().getProductById(product.id)!!
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = currentProduct, quantity = 2)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 200.0
+        )
+        assertTrue("Sale using mixture recipe should succeed", result is SaleResult.Success)
+        val sale = (result as SaleResult.Success).sale
+        assertEquals(420.0, db.rawMaterialDao().getRawMaterialById(oats.id)!!.currentStock, 0.001)
+        assertEquals(180.0, db.rawMaterialDao().getRawMaterialById(honey.id)!!.currentStock, 0.001)
+        assertEquals(2, db.inventoryTransactionDao().getTransactionsByReference(sale.id).size)
+
+        assertTrue(salesEngine.voidSale(sale.id, "إلغاء اختبار الخلطة", testUser).isSuccess)
+        assertEquals(500.0, db.rawMaterialDao().getRawMaterialById(oats.id)!!.currentStock, 0.001)
+        assertEquals(200.0, db.rawMaterialDao().getRawMaterialById(honey.id)!!.currentStock, 0.001)
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
 
 }
