@@ -19,16 +19,24 @@ import com.example.util.NetworkUtils
 class GatewayService : Service() {
 
     private var server: GatewayServer? = null
+    private var retryEngine: GatewaySyncEngine? = null
+    private var serverPort: Int = DEFAULT_PORT
 
     companion object {
         const val CHANNEL_ID = "gateway_service_channel"
         const val NOTIFICATION_ID = 1001
         const val ACTION_START = "ACTION_START_GATEWAY"
         const val ACTION_STOP = "ACTION_STOP_GATEWAY"
+        const val EXTRA_PORT = "gateway_port"
 
-        fun startGateway(context: Context) {
+        @Volatile
+        var isServerRunning: Boolean = false
+            private set
+
+        fun startGateway(context: Context, port: Int = DEFAULT_PORT) {
             val intent = Intent(context, GatewayService::class.java).apply {
                 action = ACTION_START
+                putExtra(EXTRA_PORT, port)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -51,40 +59,73 @@ class GatewayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                server?.stop()
-                stopForeground(true)
-                stopSelf()
-                return START_NOT_STICKY
-            }
-            else -> {
-                startServer()
-            }
+        if (intent?.action == ACTION_STOP) {
+            stopGatewayInternal()
+            return START_NOT_STICKY
         }
-        return START_STICKY
+        val requestedPort = intent?.getIntExtra(EXTRA_PORT, DEFAULT_PORT) ?: DEFAULT_PORT
+        startServer(requestedPort)
+        return if (isServerRunning) START_STICKY else START_NOT_STICKY
     }
 
-    private fun startServer() {
-        val db = AppDatabase.getInstance(applicationContext)
-        val engine = WalletMatchingEngine(db)
-        val syncEngine = GatewaySyncEngine(db)
+    private fun startServer(port: Int) {
+        // Promote immediately to foreground before opening sockets.
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification("بوابة الحوالات (SMS Gateway)", "جاري تشغيل الخادم...")
+        )
 
-        if (server == null) {
-            server = GatewayServer(
-                db = db,
-                walletMatchingEngine = engine,
-                port = 8080,
-                gatewaySyncEngine = syncEngine,
-                context = applicationContext
-            )
+        if (server?.isRunning == true && serverPort == port) {
+            isServerRunning = true
+            refreshNotification("الخادم نشط على ${NetworkUtils.getLocalIpAddress()}:$port")
+            return
         }
 
-        server?.start()
+        server?.stop()
+        retryEngine?.stopPeriodicRetryLoop()
+        server = null
+        retryEngine = null
+        isServerRunning = false
 
-        val ip = NetworkUtils.getLocalIpAddress()
-        val notification = buildNotification("بوابة الحوالات (SMS Gateway) نشطة", "الخادم يستمع على: http://$ip:8080")
-        startForeground(NOTIFICATION_ID, notification)
+        val db = AppDatabase.getInstance(applicationContext)
+        val syncEngine = GatewaySyncEngine(db)
+        val candidate = GatewayServer(
+            db = db,
+            walletMatchingEngine = WalletMatchingEngine(db),
+            port = port,
+            gatewaySyncEngine = syncEngine,
+            context = applicationContext
+        )
+
+        if (candidate.start()) {
+            server = candidate
+            retryEngine = syncEngine
+            serverPort = port
+            isServerRunning = true
+            refreshNotification("الخادم نشط على ${NetworkUtils.getLocalIpAddress()}:$port")
+        } else {
+            candidate.stop()
+            syncEngine.stopPeriodicRetryLoop()
+            isServerRunning = false
+            refreshNotification("تعذر تشغيل الخادم؛ تحقق من المنفذ وإعدادات الشبكة")
+            stopForeground(true)
+            stopSelf()
+        }
+    }
+
+    private fun stopGatewayInternal() {
+        server?.stop()
+        server = null
+        retryEngine?.stopPeriodicRetryLoop()
+        retryEngine = null
+        isServerRunning = false
+        stopForeground(true)
+        stopSelf()
+    }
+
+    private fun refreshNotification(message: String) {
+        getSystemService(NotificationManager::class.java)
+            ?.notify(NOTIFICATION_ID, buildNotification("بوابة الحوالات (SMS Gateway)", message))
     }
 
     private fun buildNotification(title: String, content: String): Notification {
@@ -97,7 +138,6 @@ class GatewayService : Service() {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(content)
@@ -116,15 +156,22 @@ class GatewayService : Service() {
             ).apply {
                 description = "خدمة تشغيل خادم الحوالات وبوابة الرسائل عبر الشبكة المحلية"
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
     override fun onDestroy() {
         server?.stop()
+        server = null
+        retryEngine?.stopPeriodicRetryLoop()
+        retryEngine = null
+        isServerRunning = false
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private companion object {
+        const val DEFAULT_PORT = 8080
+    }
 }
