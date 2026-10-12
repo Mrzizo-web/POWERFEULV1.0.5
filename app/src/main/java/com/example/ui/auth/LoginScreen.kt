@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.domain.model.UserProfile
+import java.security.MessageDigest
 
 @Composable
 fun LoginScreen(
@@ -36,6 +37,8 @@ fun LoginScreen(
 ) {
     var selectedUser by remember { mutableStateOf<UserProfile?>(null) }
     var enteredPin by remember { mutableStateOf("") }
+    var firstSetupPinFingerprint by remember { mutableStateOf<String?>(null) }
+    var localSetupError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(userProfiles) {
         if (selectedUser == null && userProfiles.isNotEmpty()) {
@@ -120,6 +123,8 @@ fun LoginScreen(
                                 onClick = {
                                     selectedUser = profile
                                     enteredPin = ""
+                                    firstSetupPinFingerprint = null
+                                    localSetupError = null
                                     onClearError()
                                 },
                                 label = {
@@ -141,7 +146,11 @@ fun LoginScreen(
 
                 selectedUser?.takeIf { it.requiresPinSetup }?.let {
                     Text(
-                        text = "أول تشغيل للمالك: أدخل رمزًا من 4 إلى 6 أرقام ليصبح PIN الخاص بالمالك. لن يوجد رمز افتراضي.",
+                        text = if (firstSetupPinFingerprint == null) {
+                            "أول تشغيل للمالك: اختر PIN من 4 إلى 6 أرقام، ثم أعد إدخاله للتأكيد. لن يوجد رمز افتراضي."
+                        } else {
+                            "أعد إدخال PIN نفسه للتأكيد قبل حفظه."
+                        },
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 12.sp
                     )
@@ -167,10 +176,11 @@ fun LoginScreen(
                     }
                 }
 
-                if (!errorMessage.isNullOrEmpty()) {
+                val visibleError = localSetupError ?: errorMessage
+                if (!visibleError.isNullOrEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = errorMessage,
+                        text = visibleError,
                         color = MaterialTheme.colorScheme.error,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold
@@ -250,7 +260,34 @@ fun LoginScreen(
                     onClick = {
                         val user = selectedUser
                         if (user != null && enteredPin.length in 4..6) {
-                            onAuthenticate(user.id, enteredPin)
+                            if (user.requiresPinSetup) {
+                                val fingerprint = MessageDigest.getInstance("SHA-256")
+                                    .digest(enteredPin.toByteArray(Charsets.UTF_8))
+                                    .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+                                val firstFingerprint = firstSetupPinFingerprint
+                                if (firstFingerprint == null) {
+                                    firstSetupPinFingerprint = fingerprint
+                                    enteredPin = ""
+                                    localSetupError = null
+                                    onClearError()
+                                } else if (firstFingerprint != fingerprint) {
+                                    firstSetupPinFingerprint = null
+                                    enteredPin = ""
+                                    localSetupError = "PIN غير متطابق؛ أعد إدخالهما من البداية"
+                                    onClearError()
+                                } else {
+                                    val confirmedPin = enteredPin
+                                    firstSetupPinFingerprint = null
+                                    enteredPin = ""
+                                    localSetupError = null
+                                    onAuthenticate(user.id, confirmedPin)
+                                }
+                            } else {
+                                val pinToAuthenticate = enteredPin
+                                enteredPin = ""
+                                localSetupError = null
+                                onAuthenticate(user.id, pinToAuthenticate)
+                            }
                         }
                     },
                     enabled = selectedUser != null && enteredPin.length in 4..6,
@@ -263,7 +300,9 @@ fun LoginScreen(
                     Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        if (selectedUser?.requiresPinSetup == true) "إنشاء PIN للمالك والدخول" else "دخول إلى النظام",
+                        if (selectedUser?.requiresPinSetup == true) {
+                            if (firstSetupPinFingerprint == null) "التالي: تأكيد PIN" else "تأكيد PIN وإنشاءه"
+                        } else "دخول إلى النظام",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
