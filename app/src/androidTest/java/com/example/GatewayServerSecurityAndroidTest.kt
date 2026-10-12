@@ -108,7 +108,26 @@ class GatewayServerSecurityAndroidTest {
         val copiedToWallets = sendRequest("GET", "/api/wallets", headers, "")
         assertTrue("A status signature must not authorize /api/wallets: $copiedToWallets", copiedToWallets.startsWith("HTTP/1.1 401"))
         val replay = sendRequest("GET", "/api/status", headers, "")
-        assertTrue("Replaying a signed request ID should be rejected: $replay", replay.startsWith("HTTP/1.1 409"))
+        assertTrue("Replaying a signed request ID should be rejected: " + replay, replay.startsWith("HTTP/1.1 409"))
+
+        // Restart with empty in-memory state. The same valid signed request is still
+        // within its timestamp window but must be rejected by the persistent nonce store.
+        server.stop()
+        serverScope?.cancel()
+        syncScope?.cancel()
+        serverScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        syncScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        server = GatewayServer(
+            db = db,
+            walletMatchingEngine = WalletMatchingEngine(db),
+            port = testPort,
+            coroutineScope = serverScope!!,
+            gatewaySyncEngine = GatewaySyncEngine(db, syncScope!!, autoStartRetry = false),
+            context = InstrumentationRegistry.getInstrumentation().targetContext
+        )
+        assertTrue("Gateway server should restart on the same port", server.start())
+        val afterRestart = sendRequest("GET", "/api/status", headers, "")
+        assertTrue("Persisted replay nonce must survive server restart: " + afterRestart, afterRestart.startsWith("HTTP/1.1 409"))
     }
 
     @Test
