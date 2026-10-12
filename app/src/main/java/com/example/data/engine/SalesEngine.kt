@@ -57,8 +57,13 @@ class SalesEngine(
         ) {
             return SaleResult.Error("المبلغ النقدي المستلم أقل من صافي الفاتورة")
         }
-        if (paymentMethod == PaymentMethod.E_WALLET && paymentReference.isBlank()) {
-            return SaleResult.Error("يجب إدخال أو توليد مرجع عملية المحفظة قبل تأكيد البيع")
+        val effectivePaymentReference = if (
+            paymentMethod == PaymentMethod.E_WALLET && paymentReference.isBlank()
+        ) {
+            "WAL-" + SimpleDateFormat("yyMMdd", Locale.ENGLISH).format(Date()) + "-" +
+                UUID.randomUUID().toString().take(8).uppercase(Locale.ROOT)
+        } else {
+            paymentReference.trim()
         }
 
         var customer: CustomerEntity? = null
@@ -125,7 +130,7 @@ class SalesEngine(
                         discountAmount = discountAmount,
                         netAmount = netAmount,
                         paymentMethod = paymentMethod,
-                        paymentReference = paymentReference,
+                        paymentReference = effectivePaymentReference,
                         cashReceived = cashReceived,
                         cashChange = cashChange,
                         totalCost = items.sumOf { it.product.costPrice * it.quantity },
