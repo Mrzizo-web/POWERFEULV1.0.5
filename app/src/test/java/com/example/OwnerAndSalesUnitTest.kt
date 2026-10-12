@@ -9,12 +9,12 @@ import org.junit.Test
 class OwnerAndSalesUnitTest {
 
     @Test
-    fun testOwnerInitialPinVerification() {
-        val initialPin = "775152"
-        val credentials = PasswordHasher.DEFAULT.hash(initialPin)
-        assertTrue(PasswordHasher.DEFAULT.verify(initialPin, credentials.saltHex, credentials.hashHex))
-        assertFalse(PasswordHasher.DEFAULT.verify("000000", credentials.saltHex, credentials.hashHex))
-        assertFalse(PasswordHasher.DEFAULT.verify("775151", credentials.saltHex, credentials.hashHex))
+    fun testOwnerChosenPinVerification() {
+        val chosenPin = "4826"
+        val credentials = PasswordHasher.DEFAULT.hash(chosenPin)
+        assertTrue(PasswordHasher.DEFAULT.verify(chosenPin, credentials.saltHex, credentials.hashHex))
+        assertFalse(PasswordHasher.DEFAULT.verify("0000", credentials.saltHex, credentials.hashHex))
+        assertFalse(PasswordHasher.DEFAULT.verify("4827", credentials.saltHex, credentials.hashHex))
     }
 
     @Test
