@@ -20,10 +20,12 @@ class LegacyOwnerPinMigrationAndroidTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "legacy-pin-migration-" + UUID.randomUUID().toString() + ".db"
 
-        Room.databaseBuilder(context, AppDatabase::class.java, dbName)
+        val bootstrap = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
             .allowMainThreadQueries()
             .build()
-            .close()
+        // Force Room to open/create the on-disk file before converting it to a legacy schema.
+        bootstrap.openHelper.writableDatabase.version
+        bootstrap.close()
 
         val raw = SQLiteDatabase.openDatabase(
             context.getDatabasePath(dbName).absolutePath,
@@ -47,11 +49,11 @@ class LegacyOwnerPinMigrationAndroidTest {
         )
         raw.execSQL(
             "INSERT INTO users (id, name, username, pin, role, phone, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            arrayOf("user-owner-ziad", "مالك قديم", "ziad", "918273645", "OWNER", "", 1, 1000L)
+            arrayOf<Any?>("user-owner-ziad", "مالك قديم", "ziad", "918273645", "OWNER", "", 1, 1000L)
         )
         raw.execSQL(
             "INSERT INTO users (id, name, username, pin, role, phone, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            arrayOf("legacy-employee", "موظف قديم", "cashier-old", "2468", "CASHIER", "", 1, 1001L)
+            arrayOf<Any?>("legacy-employee", "موظف قديم", "cashier-old", "2468", "CASHIER", "", 1, 1001L)
         )
         raw.execSQL("PRAGMA user_version = 1")
         raw.close()
