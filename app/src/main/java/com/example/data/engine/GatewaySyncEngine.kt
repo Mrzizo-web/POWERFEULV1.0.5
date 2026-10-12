@@ -10,7 +10,8 @@ import java.net.URL
 
 class GatewaySyncEngine(
     private val db: AppDatabase,
-    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    private val autoStartRetry: Boolean = true
 ) {
     private val queueDao = db.gatewayQueueDao()
     private var retryJob: Job? = null
@@ -20,7 +21,12 @@ class GatewaySyncEngine(
     val pendingCount: Flow<Int> = queueDao.getPendingCount()
 
     init {
-        startPeriodicRetryLoop()
+        if (autoStartRetry) startPeriodicRetryLoop()
+    }
+
+    fun stopPeriodicRetryLoop() {
+        retryJob?.cancel()
+        retryJob = null
     }
 
     suspend fun enqueueItem(
