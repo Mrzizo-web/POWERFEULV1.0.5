@@ -4,10 +4,10 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.UserEntity
-import com.example.data.local.entity.UserRole
 import com.example.domain.model.UserRole as DomainUserRole
 import com.example.security.OwnerPinSetupManager
 import com.example.security.PasswordHasher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -54,9 +54,7 @@ class OwnerPinSetupManagerAndroidTest {
         assertTrue(configured.pinSalt.isNotBlank())
         assertTrue(PasswordHasher.DEFAULT.verify("4826", configured.pinSalt, configured.pinHash))
         assertFalse(PasswordHasher.DEFAULT.verify("4827", configured.pinSalt, configured.pinHash))
-        assertTrue(db.auditLogDao().getRecentLogs().let { flow ->
-            kotlinx.coroutines.flow.first(flow).any { it.action == "INITIAL_OWNER_PIN_SET" }
-        })
+        assertTrue(db.auditLogDao().getRecentLogs().first().any { it.action == "INITIAL_OWNER_PIN_SET" })
     }
 
     @Test
