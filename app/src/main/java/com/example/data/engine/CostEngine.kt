@@ -47,7 +47,7 @@ class CostEngine(
             val normalizedQty = UnitConverter.convert(qty, item.unit, material.baseUnit)
             val unitPrice = when {
                 material.avgCostPerUnit.isFinite() && material.avgCostPerUnit > 0.0 -> material.avgCostPerUnit
-                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice >= 0.0 -> material.lastPurchasePrice
+                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice > 0.0 -> material.lastPurchasePrice
                 else -> throw IllegalArgumentException("تكلفة الوحدة غير صالحة للمادة " + material.name)
             }
             val cost = unitPrice * normalizedQty
@@ -64,8 +64,8 @@ class CostEngine(
         require(mixture.outputQuantity.isFinite() && mixture.outputQuantity > 0.0) {
             "كمية إنتاج الخلطة غير صالحة: " + mixture.name
         }
-        if (mixture.unitCost.isFinite() && mixture.unitCost > 0.0) return mixture.unitCost
-
+        // Recompute from current raw-material costs instead of trusting cached unitCost,
+        // which can become stale after a supplier purchase changes material prices.
         val items = mixtureDao.getMixtureItemsSync(mixtureId)
         require(items.isNotEmpty()) { "الخلطة " + mixture.name + " لا تحتوي على مواد خام" }
         var sum = 0.0
@@ -78,7 +78,7 @@ class CostEngine(
             val normalizedQty = UnitConverter.convert(item.quantity, item.unit, material.baseUnit)
             val price = when {
                 material.avgCostPerUnit.isFinite() && material.avgCostPerUnit > 0.0 -> material.avgCostPerUnit
-                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice >= 0.0 -> material.lastPurchasePrice
+                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice > 0.0 -> material.lastPurchasePrice
                 else -> throw IllegalArgumentException("تكلفة الوحدة غير صالحة للمادة " + material.name)
             }
             sum += price * normalizedQty
