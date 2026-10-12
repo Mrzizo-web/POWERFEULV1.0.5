@@ -11,43 +11,82 @@ class CostEngine(
     private val mixtureDao: MixtureDao
 ) {
     suspend fun calculateRecipeTotalCost(recipeId: String): Double {
+        val recipe = recipeDao.getRecipeById(recipeId)
+            ?: throw IllegalArgumentException("الوصفة غير موجودة: " + recipeId)
         val items = recipeDao.getRecipeItemsSync(recipeId)
-        var total = 0.0
-        for (item in items) {
-            total += calculateItemCost(item)
-        }
+        require(items.isNotEmpty()) { "الوصفة " + recipe.name + " لا تحتوي على مكونات" }
+        val total = items.sumOf { calculateItemCost(it) }
+        require(total.isFinite() && total >= 0.0) { "إجمالي تكلفة الوصفة غير صالح" }
         return total
     }
 
     suspend fun calculateItemCost(item: RecipeItemEntity): Double {
-        val qty = if (item.amount > 0) item.amount else item.quantity
-        if (item.mixtureId.isNotEmpty()) {
-            val mixtureCostPerUnit = calculateMixtureUnitCost(item.mixtureId)
-            return mixtureCostPerUnit * qty
+        val qty = if (item.amount > 0.0) item.amount else item.quantity
+        require(qty.isFinite() && qty > 0.0) {
+            "كمية غير صالحة في مكوّن الوصفة " + item.name
         }
-        if (item.rawMaterialId.isNotEmpty()) {
-            val mat = rawMaterialDao.getRawMaterialById(item.rawMaterialId) ?: return 0.0
-            val normalizedQty = UnitConverter.convert(qty, item.unit, mat.baseUnit)
-            val unitPrice = if (mat.avgCostPerUnit > 0) mat.avgCostPerUnit else mat.lastPurchasePrice
-            return unitPrice * normalizedQty
+
+        if (item.mixtureId.isNotBlank()) {
+            val mixture = mixtureDao.getMixtureById(item.mixtureId)
+                ?: throw IllegalArgumentException("الخلطة غير موجودة: " + item.mixtureId)
+            require(mixture.outputQuantity.isFinite() && mixture.outputQuantity > 0.0) {
+                "كمية إنتاج الخلطة غير صالحة: " + mixture.name
+            }
+            val normalizedQty = UnitConverter.convert(qty, item.unit, mixture.unit)
+            val unitCost = calculateMixtureUnitCost(item.mixtureId)
+            val cost = unitCost * normalizedQty
+            require(cost.isFinite() && cost >= 0.0) {
+                "تكلفة غير صالحة لمكوّن الخلطة " + mixture.name
+            }
+            return cost
         }
-        return 0.0
+
+        if (item.rawMaterialId.isNotBlank()) {
+            val material = rawMaterialDao.getRawMaterialById(item.rawMaterialId)
+                ?: throw IllegalArgumentException("المادة الخام غير موجودة: " + item.rawMaterialId)
+            val normalizedQty = UnitConverter.convert(qty, item.unit, material.baseUnit)
+            val unitPrice = when {
+                material.avgCostPerUnit.isFinite() && material.avgCostPerUnit > 0.0 -> material.avgCostPerUnit
+                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice >= 0.0 -> material.lastPurchasePrice
+                else -> throw IllegalArgumentException("تكلفة الوحدة غير صالحة للمادة " + material.name)
+            }
+            val cost = unitPrice * normalizedQty
+            require(cost.isFinite() && cost >= 0.0) { "تكلفة غير صالحة للمادة " + material.name }
+            return cost
+        }
+
+        throw IllegalArgumentException("مكوّن الوصفة لا يرتبط بمادة خام أو خلطة: " + item.name)
     }
 
     suspend fun calculateMixtureUnitCost(mixtureId: String): Double {
-        val mixture = mixtureDao.getMixtureById(mixtureId) ?: return 0.0
-        if (mixture.unitCost > 0) return mixture.unitCost
+        val mixture = mixtureDao.getMixtureById(mixtureId)
+            ?: throw IllegalArgumentException("الخلطة غير موجودة: " + mixtureId)
+        require(mixture.outputQuantity.isFinite() && mixture.outputQuantity > 0.0) {
+            "كمية إنتاج الخلطة غير صالحة: " + mixture.name
+        }
+        if (mixture.unitCost.isFinite() && mixture.unitCost > 0.0) return mixture.unitCost
+
         val items = mixtureDao.getMixtureItemsSync(mixtureId)
+        require(items.isNotEmpty()) { "الخلطة " + mixture.name + " لا تحتوي على مواد خام" }
         var sum = 0.0
         for (item in items) {
-            val mat = rawMaterialDao.getRawMaterialById(item.rawMaterialId)
-            if (mat != null) {
-                val normalizedQty = UnitConverter.convert(item.quantity, item.unit, mat.baseUnit)
-                val price = if (mat.avgCostPerUnit > 0) mat.avgCostPerUnit else mat.lastPurchasePrice
-                sum += price * normalizedQty
+            require(item.quantity.isFinite() && item.quantity > 0.0) {
+                "كمية غير صالحة في الخلطة " + mixture.name
             }
+            val material = rawMaterialDao.getRawMaterialById(item.rawMaterialId)
+                ?: throw IllegalArgumentException("مادة خام غير موجودة في الخلطة: " + item.rawMaterialId)
+            val normalizedQty = UnitConverter.convert(item.quantity, item.unit, material.baseUnit)
+            val price = when {
+                material.avgCostPerUnit.isFinite() && material.avgCostPerUnit > 0.0 -> material.avgCostPerUnit
+                material.lastPurchasePrice.isFinite() && material.lastPurchasePrice >= 0.0 -> material.lastPurchasePrice
+                else -> throw IllegalArgumentException("تكلفة الوحدة غير صالحة للمادة " + material.name)
+            }
+            sum += price * normalizedQty
         }
-        val outQty = if (mixture.outputQuantity > 0) mixture.outputQuantity else 1.0
-        return sum / outQty
+        val unitCost = sum / mixture.outputQuantity
+        require(unitCost.isFinite() && unitCost >= 0.0) {
+            "متوسط تكلفة الخلطة غير صالح: " + mixture.name
+        }
+        return unitCost
     }
 }
