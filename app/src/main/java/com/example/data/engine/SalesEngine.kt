@@ -32,9 +32,34 @@ class SalesEngine(
         notes: String = ""
     ): SaleResult {
         if (items.isEmpty()) return SaleResult.Error("السلة فارغة")
+        if (items.any { it.quantity <= 0 }) {
+            return SaleResult.Error("كمية أي منتج يجب أن تكون أكبر من صفر")
+        }
+        if (items.any {
+                !it.unitPrice.isFinite() || it.unitPrice < 0.0 ||
+                    !it.totalPrice.isFinite() || it.totalPrice < 0.0 ||
+                    !it.product.costPrice.isFinite() || it.product.costPrice < 0.0
+            }
+        ) {
+            return SaleResult.Error("توجد أسعار أو تكاليف غير صالحة في السلة")
+        }
 
         val totalAmount = items.sumOf { it.totalPrice }
-        val netAmount = (totalAmount - discountAmount).coerceAtLeast(0.0)
+        if (!totalAmount.isFinite() || totalAmount <= 0.0) {
+            return SaleResult.Error("إجمالي الفاتورة يجب أن يكون أكبر من صفر")
+        }
+        if (!discountAmount.isFinite() || discountAmount < 0.0 || discountAmount >= totalAmount) {
+            return SaleResult.Error("الخصم غير صالح؛ يجب أن يكون غير سالب وأقل من إجمالي الفاتورة")
+        }
+        val netAmount = totalAmount - discountAmount
+        if (paymentMethod == PaymentMethod.CASH &&
+            (!cashReceived.isFinite() || cashReceived < netAmount)
+        ) {
+            return SaleResult.Error("المبلغ النقدي المستلم أقل من صافي الفاتورة")
+        }
+        if (paymentMethod == PaymentMethod.E_WALLET && paymentReference.isBlank()) {
+            return SaleResult.Error("يجب إدخال أو توليد مرجع عملية المحفظة قبل تأكيد البيع")
+        }
 
         var customer: CustomerEntity? = null
         if (paymentMethod == PaymentMethod.DEBT) {
@@ -65,6 +90,13 @@ class SalesEngine(
                         ?: throw InventoryValidationException("الشفت غير موجود")
                     if (openShift.status != com.example.domain.model.ShiftStatus.OPEN) {
                         throw InventoryValidationException("لا يمكن البيع على شفت مغلق")
+                    }
+                    for (item in items) {
+                        val currentProduct = db.productDao().getProductById(item.product.id)
+                            ?: throw InventoryValidationException("المنتج لم يعد موجودًا: ${item.product.name}")
+                        if (!currentProduct.isActive || !currentProduct.isAvailable) {
+                            throw InventoryValidationException("المنتج غير نشط أو غير متاح للبيع: ${currentProduct.name}")
+                        }
                     }
                     if (paymentMethod == PaymentMethod.DEBT) {
                         val refreshedCustomer = selectedCustomerId?.let { customerDao.getCustomerById(it) }
