@@ -43,7 +43,9 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 // Never create a shared PIN during migration. Valid legacy PINs
                 // are immediately salted and hashed; empty legacy credentials stay
                 // unconfigured and must be reset through an authorized flow.
-                val credentials = if (rawPin.isNullOrBlank()) {
+                val credentials = if (rawPin.isNullOrBlank() || !rawPin.matches(Regex("[0-9]{4,6}"))) {
+                    // Legacy credentials outside the supported 4-6 digit PIN policy
+                    // must be reset; never migrate an unusable PIN and lock out the owner.
                     "" to ""
                 } else {
                     val hashResult = PasswordHasher.DEFAULT.hash(rawPin)
