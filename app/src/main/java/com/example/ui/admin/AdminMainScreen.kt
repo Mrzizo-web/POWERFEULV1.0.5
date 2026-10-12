@@ -24,6 +24,7 @@ fun AdminMainScreen(
     products: List<ProductEntity>,
     rawMaterials: List<RawMaterialEntity>,
     recipes: List<RecipeEntity>,
+    mixtures: List<MixtureEntity> = emptyList(),
     sales: List<SaleEntity>,
     purchases: List<PurchaseEntity>,
     suppliers: List<SupplierEntity>,
@@ -140,7 +141,7 @@ fun AdminMainScreen(
             ) {
                 when (selectedTab) {
                     AdminTab.PRODUCTS -> AdminProductsTab(categories, products, onAddProduct, onToggleProductActive)
-                    AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe)
+                    AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe, mixtures)
                     AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
                     AdminTab.SALES -> AdminSalesTab(sales, onVoidSale)
                     AdminTab.PURCHASES -> AdminPurchasesTab(purchases, suppliers)
