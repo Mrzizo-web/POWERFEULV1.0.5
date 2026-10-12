@@ -11,6 +11,12 @@ interface SettingsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun setSetting(setting: CafeteriaSettingEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSettingIfMissing(setting: CafeteriaSettingEntity): Long
+
+    @Query("DELETE FROM settings WHERE `key` LIKE 'gateway_nonce:%' AND CAST(value AS INTEGER) < :cutoff")
+    suspend fun deleteExpiredGatewayNonces(cutoff: Long): Int
+
     @Query("DELETE FROM settings WHERE `key` = :key")
     suspend fun deleteSetting(key: String)
 }
