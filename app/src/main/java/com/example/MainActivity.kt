@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                                             products = products,
                                             rawMaterials = rawMaterials,
                                             recipes = recipes,
+                                            mixtures = mixtures,
                                             sales = sales,
                                             purchases = purchases,
                                             suppliers = suppliers,
