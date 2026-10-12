@@ -32,7 +32,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val backupRestoreEngine = BackupRestoreEngine(application, db)
     val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope, autoStartRetry = false)
 
-    private var gatewayServer: com.example.gateway.GatewayServer? = null
     val isGatewayRunning = MutableStateFlow(false)
     val gatewayPort = MutableStateFlow(8080)
     val gatewayIp = MutableStateFlow(com.example.util.NetworkUtils.getLocalIpAddress())
