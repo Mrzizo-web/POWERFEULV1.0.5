@@ -190,4 +190,57 @@ class RecipeAndSalesAndroidTest {
         assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
     }
 
+    @Test
+    fun recipeManagerStoresAllComponentsAndPreservesVersionsAtomically() = runBlocking {
+        val banana = RawMaterialEntity(
+            id = "manager-banana", name = "موز", baseUnit = "g",
+            currentStock = 2000.0, avgCostPerUnit = 0.5
+        )
+        val oats = RawMaterialEntity(
+            id = "manager-oats", name = "شوفان", baseUnit = "g",
+            currentStock = 1000.0, avgCostPerUnit = 0.2
+        )
+        db.rawMaterialDao().insertRawMaterial(banana)
+        db.rawMaterialDao().insertRawMaterial(oats)
+        val product = ProductEntity(
+            id = "manager-product", name = "وصفة متعددة", categoryId = "cat-test",
+            price = 1000.0, recipeId = ""
+        )
+        db.productDao().insertProduct(product)
+        val manager = RecipeManager(db)
+
+        val first = manager.saveRecipe(
+            name = "وصفة أولى",
+            productId = product.id,
+            items = listOf(
+                RecipeItemEntity(recipeId = "", rawMaterialId = banana.id, name = banana.name, amount = 100.0, quantity = 100.0, unit = "g"),
+                RecipeItemEntity(recipeId = "", rawMaterialId = oats.id, name = oats.name, amount = 50.0, quantity = 50.0, unit = "g")
+            ),
+            notes = "اختبار الإصدار الأول",
+            user = testUser
+        )
+
+        assertEquals(1, first.version)
+        assertEquals(2, db.recipeDao().getRecipeItemsSync(first.id).size)
+        assertEquals(first.id, db.productDao().getProductById(product.id)!!.recipeId)
+        assertEquals(60.0, first.calculatedCost, 0.001)
+
+        val second = manager.saveRecipe(
+            name = "وصفة معدلة",
+            productId = product.id,
+            items = listOf(
+                RecipeItemEntity(recipeId = "", rawMaterialId = banana.id, name = banana.name, amount = 200.0, quantity = 200.0, unit = "g")
+            ),
+            notes = "اختبار الإصدار الثاني",
+            user = testUser
+        )
+
+        assertEquals(2, second.version)
+        assertEquals(1, db.recipeDao().getRecipeItemsSync(second.id).size)
+        assertFalse(db.recipeDao().getRecipeById(first.id)!!.isActive)
+        assertTrue(db.recipeDao().getRecipeById(second.id)!!.isActive)
+        assertEquals(second.id, db.productDao().getProductById(product.id)!!.recipeId)
+        assertEquals(2, db.recipeDao().getAllRecipesSync().size)
+    }
+
 }
