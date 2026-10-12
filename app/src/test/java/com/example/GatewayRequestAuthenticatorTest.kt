@@ -83,7 +83,7 @@ class GatewayRequestAuthenticatorTest {
             )?.statusCode
         )
         assertEquals(
-            401,
+            405,
             GatewayRequestAuthenticator.authenticate(
                 "POST", "/api/status", headers, body, token, deviceId
             )?.statusCode
