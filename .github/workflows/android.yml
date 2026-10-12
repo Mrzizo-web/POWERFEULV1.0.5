@@ -44,6 +44,8 @@ jobs:
 
       - name: Unit tests
         run: gradle testDebugUnitTest
+      - name: Compile Android instrumentation test APK
+        run: gradle assembleDebugAndroidTest
       - name: Build debug APK
         run: gradle assembleDebug
       - name: Upload debug APK artifact
