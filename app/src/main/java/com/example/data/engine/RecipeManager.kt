@@ -27,21 +27,47 @@ class RecipeManager(private val db: AppDatabase) {
             ?: throw IllegalArgumentException("المنتج المرتبط بالوصفة غير موجود")
         val recipeId = java.util.UUID.randomUUID().toString()
         val nextVersion = db.recipeDao().getMaxVersion(productId) + 1
+        val costEngine = CostEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao())
         val normalizedItems = items.map { item ->
-            val material = db.rawMaterialDao().getRawMaterialById(item.rawMaterialId)
-                ?: throw IllegalArgumentException("المادة الخام غير موجودة: " + item.rawMaterialId)
             val amount = if (item.amount > 0.0) item.amount else item.quantity
-            require(amount.isFinite() && amount > 0.0) { "كمية غير صالحة للمادة " + material.name }
-            val baseAmount = UnitConverter.convert(amount, item.unit, material.baseUnit)
-            val cost = baseAmount * material.avgCostPerUnit
-            require(cost.isFinite() && cost >= 0.0) { "تكلفة غير صالحة للمادة " + material.name }
-            item.copy(
-                recipeId = recipeId,
-                name = material.name,
-                amount = amount,
-                quantity = amount,
-                costContribution = cost
-            )
+            require(amount.isFinite() && amount > 0.0) { "كمية مكوّن الوصفة يجب أن تكون أكبر من صفر" }
+
+            when {
+                item.rawMaterialId.isNotBlank() -> {
+                    require(item.mixtureId.isBlank()) { "لا يمكن ربط مكوّن واحد بمادة خام وخلطة معًا" }
+                    val material = db.rawMaterialDao().getRawMaterialById(item.rawMaterialId)
+                        ?: throw IllegalArgumentException("المادة الخام غير موجودة: " + item.rawMaterialId)
+                    UnitConverter.convert(amount, item.unit, material.baseUnit)
+                    val normalized = item.copy(
+                        recipeId = recipeId,
+                        name = material.name,
+                        amount = amount,
+                        quantity = amount
+                    )
+                    val cost = costEngine.calculateItemCost(normalized)
+                    require(cost.isFinite() && cost >= 0.0) {
+                        "تكلفة غير صالحة للمادة " + material.name
+                    }
+                    normalized.copy(costContribution = cost)
+                }
+                item.mixtureId.isNotBlank() -> {
+                    val mixture = db.mixtureDao().getMixtureById(item.mixtureId)
+                        ?: throw IllegalArgumentException("الخلطة غير موجودة: " + item.mixtureId)
+                    UnitConverter.convert(amount, item.unit, mixture.unit)
+                    val normalized = item.copy(
+                        recipeId = recipeId,
+                        name = mixture.name,
+                        amount = amount,
+                        quantity = amount
+                    )
+                    val cost = costEngine.calculateItemCost(normalized)
+                    require(cost.isFinite() && cost >= 0.0) {
+                        "تكلفة غير صالحة للخلطة " + mixture.name
+                    }
+                    normalized.copy(costContribution = cost)
+                }
+                else -> throw IllegalArgumentException("كل مكوّن يجب أن يرتبط بمادة خام أو خلطة")
+            }
         }
         val totalCost = normalizedItems.sumOf { it.costContribution }
         require(totalCost.isFinite() && totalCost >= 0.0) { "تعذر حساب تكلفة الوصفة" }
