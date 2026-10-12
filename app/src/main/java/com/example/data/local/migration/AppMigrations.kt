@@ -93,3 +93,31 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         )
     }
 }
+
+
+/**
+ * Version 4 enforces durable SMS event idempotency. If a prior version already
+ * recorded duplicate originalSmsId values, retain every financial row but clear
+ * the idempotency link on all but one row before creating the unique index.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            UPDATE wallet_transactions
+            SET originalSmsId = NULL
+            WHERE originalSmsId IS NOT NULL
+              AND id NOT IN (
+                  SELECT MIN(id)
+                  FROM wallet_transactions
+                  WHERE originalSmsId IS NOT NULL
+                  GROUP BY originalSmsId
+              )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS index_wallet_transactions_originalSmsId " +
+                "ON wallet_transactions(originalSmsId)"
+        )
+    }
+}

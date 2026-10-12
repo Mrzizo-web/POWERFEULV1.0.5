@@ -14,8 +14,10 @@ import com.example.data.local.entity.RecipeItemEntity
 import com.example.data.local.entity.SaleEntity
 import com.example.data.local.entity.ShiftEntity
 import com.example.data.local.entity.UserEntity
+import com.example.data.local.entity.WalletTransactionEntity
 import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
+import com.example.data.local.migration.MIGRATION_3_4
 import com.example.domain.model.InventoryTxType
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.ShiftStatus
@@ -29,7 +31,7 @@ import java.util.UUID
 
 class DatabaseMigrationAndroidTest {
     @Test
-    fun versionTwoToThreeMigrationPreservesBusinessData() = runBlocking {
+    fun versionTwoToFourMigrationPreservesBusinessDataAndDeduplicatesEventIds() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "migration-check-" + UUID.randomUUID().toString() + ".db"
         val oldDb = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
@@ -133,6 +135,18 @@ class DatabaseMigrationAndroidTest {
                 userName = user.name
             )
         )
+        oldDb.walletDao().insertTransaction(
+            WalletTransactionEntity(
+                id = "migration-wallet-tx",
+                walletCode = "FLOOSAK",
+                amount = 45.0,
+                transactionId = "",
+                sender = "مستخدم اختبار",
+                receivedAt = 1_500L,
+                status = com.example.domain.model.WalletTransferStatus.MATCHED,
+                originalSmsId = "migration-event-id"
+            )
+        )
         oldDb.close()
 
         // Simulate the documented v2 schema: same business tables, before the v3 queue table.
@@ -142,11 +156,25 @@ class DatabaseMigrationAndroidTest {
             SQLiteDatabase.OPEN_READWRITE
         )
         raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
+        raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        raw.execSQL(
+            """
+            INSERT INTO wallet_transactions (
+                id, walletCode, amount, transactionId, sender, receivedAt,
+                shiftId, cashierId, cashierName, status, originalSmsId,
+                notes, rejectionReason, createdAt, updatedAt
+            ) VALUES (
+                'migration-wallet-tx-duplicate', 'FLOOSAK', 45.0, '', 'مستخدم اختبار',
+                1500, NULL, NULL, NULL, 'MATCHED', 'migration-event-id',
+                '', '', 1500, 1500
+            )
+            """.trimIndent()
+        )
         raw.execSQL("PRAGMA user_version = 2")
         raw.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
 
@@ -161,6 +189,11 @@ class DatabaseMigrationAndroidTest {
             assertEquals(1, upgraded.debtTransactionDao().getTransactionsForCustomer(customer.id).first().size)
             assertEquals(1, upgraded.inventoryTransactionDao().getTransactionsByReference(sale.id).size)
             assertEquals(0, upgraded.gatewayQueueDao().getAllQueueItems().first().size)
+            val walletRows = upgraded.walletDao().getAllTransactionsSync()
+            assertEquals(2, walletRows.size)
+            assertEquals(1, walletRows.count { it.originalSmsId == "migration-event-id" })
+            assertNotNull(walletRows.firstOrNull { it.id == "migration-wallet-tx-duplicate" })
+            assertEquals(null, walletRows.first { it.id == "migration-wallet-tx-duplicate" }.originalSmsId)
             assertNotNull(upgraded.settingsDao())
         } finally {
             upgraded.close()

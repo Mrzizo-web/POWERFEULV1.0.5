@@ -12,6 +12,7 @@ import com.example.data.local.entity.UserEntity
 import com.example.domain.model.ShiftStatus
 import com.example.domain.model.UserRole
 import com.example.domain.model.WalletTransferStatus
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -155,4 +156,33 @@ class WalletShiftIntegrationTest {
         assertEquals(-500.0, finalShift.discrepancyAmount, 0.001)
         assertEquals(ShiftStatus.CLOSED, finalShift.status)
     }
+    @Test
+    fun concurrentDeliveryOfSameGatewayEventCreatesOnlyOneTransaction() = runBlocking {
+        val user = user()
+        db.shiftDao().insertShift(
+            ShiftEntity(
+                userId = user.id,
+                userName = user.name,
+                startTime = 1_000L,
+                status = ShiftStatus.OPEN
+            )
+        )
+        val engine = WalletMatchingEngine(db)
+        val body = "استلمت حوالة من حاشد بزدان بمبلغ 800.00 ر.ي رصيدك 800.00 ر.ي"
+        val results = kotlinx.coroutines.coroutineScope {
+            val first = async(kotlinx.coroutines.Dispatchers.IO) {
+                engine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
+            }
+            val second = async(kotlinx.coroutines.Dispatchers.IO) {
+                engine.ingestSms("Floosak", body, 5_000L, "same-event-concurrent")
+            }
+            first.await() to second.await()
+        }
+        assertEquals(1, listOf(results.first, results.second).count { it is IngestResult.Created })
+        assertEquals(1, listOf(results.first, results.second).count { it is IngestResult.Duplicate })
+        assertEquals(1, db.walletDao().getAllTransactionsSync().size)
+        assertEquals(1, db.walletDao().getAllSmsSync().size)
+    }
+
+
 }

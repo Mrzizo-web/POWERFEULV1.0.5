@@ -1,11 +1,15 @@
 package com.example.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.domain.model.WalletTransferStatus
 import java.util.UUID
 
-@Entity(tableName = "wallet_transactions")
+@Entity(
+    tableName = "wallet_transactions",
+    indices = [Index(value = ["originalSmsId"], unique = true)]
+)
 data class WalletTransactionEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val walletCode: String, // JEEB, FLOOSAK, JAWALI

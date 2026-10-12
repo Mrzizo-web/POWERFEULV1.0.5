@@ -9,6 +9,7 @@ import com.example.data.local.dao.*
 import com.example.data.local.entity.*
 import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
+import com.example.data.local.migration.MIGRATION_3_4
 
 @Database(
     entities = [
@@ -42,7 +43,7 @@ import com.example.data.local.migration.MIGRATION_2_3
         WalletTransactionEntity::class,
         GatewayQueueEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -79,7 +80,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "power_feul_pos_db"
                 )
-                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                 INSTANCE = instance
                 instance

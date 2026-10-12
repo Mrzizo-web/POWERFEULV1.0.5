@@ -9,6 +9,8 @@ import com.example.domain.model.SmsProcessingStatus
 import com.example.domain.model.WalletTransferStatus
 import java.security.MessageDigest
 import java.util.UUID
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 sealed class IngestResult {
     data class Created(val tx: WalletTransactionEntity, val isOutOfShift: Boolean) : IngestResult()
@@ -20,12 +22,22 @@ class WalletMatchingEngine(private val db: AppDatabase) {
     private val walletDao = db.walletDao()
     private val shiftDao = db.shiftDao()
     private val auditLogDao = db.auditLogDao()
+    private val ingestMutex = Mutex()
 
     suspend fun ingestSms(
         sender: String,
         body: String,
         receivedAt: Long = System.currentTimeMillis(),
         sourceSmsId: String? = null
+    ): IngestResult = ingestMutex.withLock {
+        ingestSmsLocked(sender, body, receivedAt, sourceSmsId)
+    }
+
+    private suspend fun ingestSmsLocked(
+        sender: String,
+        body: String,
+        receivedAt: Long,
+        sourceSmsId: String?
     ): IngestResult {
         val parsed = WalletParserRegistry.parseSms(sender, body)
         // Stable id makes gateway retries idempotent even when the SMS has no financial reference.
