@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.data.engine.GatewaySyncEngine
 import com.example.data.engine.WalletMatchingEngine
 import com.example.data.local.AppDatabase
 import com.example.util.NetworkUtils
@@ -67,9 +68,16 @@ class GatewayService : Service() {
     private fun startServer() {
         val db = AppDatabase.getInstance(applicationContext)
         val engine = WalletMatchingEngine(db)
+        val syncEngine = GatewaySyncEngine(db)
 
         if (server == null) {
-            server = GatewayServer(db, engine, port = 8080)
+            server = GatewayServer(
+                db = db,
+                walletMatchingEngine = engine,
+                port = 8080,
+                gatewaySyncEngine = syncEngine,
+                context = applicationContext
+            )
         }
 
         server?.start()
