@@ -22,6 +22,12 @@ interface RecipeDao {
     @Query("SELECT * FROM recipes WHERE id = :id LIMIT 1")
     suspend fun getRecipeById(id: String): RecipeEntity?
 
+    @Query("SELECT COALESCE(MAX(version), 0) FROM recipes WHERE productId = :productId")
+    suspend fun getMaxVersion(productId: String): Int
+
+    @Query("UPDATE recipes SET isActive = 0 WHERE productId = :productId AND isActive = 1")
+    suspend fun deactivateActiveRecipesForProduct(productId: String)
+
     @Query("SELECT * FROM recipe_items WHERE recipeId = :recipeId")
     fun getRecipeItems(recipeId: String): Flow<List<RecipeItemEntity>>
 
