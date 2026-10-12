@@ -34,13 +34,21 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                 val id = cursor.getString(0)
                 val name = cursor.getString(1)
                 val username = cursor.getString(2)
-                val rawPin = cursor.getString(3) ?: "1234"
+                val rawPin = cursor.getString(3)
                 val role = cursor.getString(4)
                 val phone = cursor.getString(5) ?: ""
                 val isActive = cursor.getInt(6)
                 val createdAt = cursor.getLong(7)
 
-                val hashResult = PasswordHasher.DEFAULT.hash(rawPin.ifBlank { "1234" })
+                // Never create a shared PIN during migration. Valid legacy PINs
+                // are immediately salted and hashed; empty legacy credentials stay
+                // unconfigured and must be reset through an authorized flow.
+                val credentials = if (rawPin.isNullOrBlank()) {
+                    "" to ""
+                } else {
+                    val hashResult = PasswordHasher.DEFAULT.hash(rawPin)
+                    hashResult.hashHex to hashResult.saltHex
+                }
 
                 db.execSQL(
                     """
@@ -50,7 +58,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, ?, ?)
                     """.trimIndent(),
                     arrayOf(
-                        id, name, username, hashResult.hashHex, hashResult.saltHex,
+                        id, name, username, credentials.first, credentials.second,
                         role, phone, isActive, createdAt, System.currentTimeMillis()
                     )
                 )
