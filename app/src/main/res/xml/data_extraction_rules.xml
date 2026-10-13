@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
-    <cloud-backup/>
+    <cloud-backup>
+        <!-- POWER FEUL POS is local-first: no database, settings, or wallet data goes to cloud backup. -->
+        <exclude domain="root" path="."/>
+    </cloud-backup>
+    <device-transfer>
+        <!-- Prevent automatic migration of business data; use the encrypted in-app backup instead. -->
+        <exclude domain="root" path="."/>
+    </device-transfer>
 </data-extraction-rules>
