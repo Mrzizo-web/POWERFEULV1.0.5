@@ -32,6 +32,7 @@ data class FinancialReportSummary(
     val totalExpenses: Double,
     val netProfit: Double,
     val salesByPaymentMethod: Map<PaymentMethod, Double>,
+    val salesByEmployee: Map<String, Double>,
     val products: List<ProductSalesLine>,
     val invalidRecordCount: Int
 )
@@ -73,6 +74,10 @@ object ReportCalculator {
         val salesByPaymentMethod = validSales
             .groupBy { it.paymentMethod }
             .mapValues { (_, methodSales) -> methodSales.sumOf { it.netAmount } }
+        val salesByEmployee = validSales
+            .groupBy { it.userName.ifBlank { it.userId } }
+            .mapValues { (_, employeeSales) -> employeeSales.sumOf { it.netAmount } }
+            .toList().sortedByDescending { it.second }.toMap()
 
         val validItems = saleItems.filter { item ->
             activeSalesById.containsKey(item.saleId) &&
@@ -116,6 +121,7 @@ object ReportCalculator {
             totalExpenses = totalExpenses,
             netProfit = netProfit,
             salesByPaymentMethod = salesByPaymentMethod,
+            salesByEmployee = salesByEmployee,
             products = products,
             invalidRecordCount = invalidCount
         )

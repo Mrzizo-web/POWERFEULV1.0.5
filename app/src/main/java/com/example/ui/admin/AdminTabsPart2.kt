@@ -1006,11 +1006,27 @@ fun AdminReportsTab(
                     val amount = report.salesByPaymentMethod[method] ?: 0.0
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(method.titleAr, fontSize = 13.sp)
-                        Text("$" + amount + " ريال", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(amount.toString() + " ريال", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("المبيعات حسب الموظف", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                if (report.salesByEmployee.isEmpty()) {
+                    Text("لا توجد مبيعات ضمن الفترة المحددة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    report.salesByEmployee.forEach { (employee, amount) ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(employee, fontSize = 13.sp)
+                            Text(amount.toString() + " ريال", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("الربحية حسب المنتج", fontWeight = FontWeight.Bold, fontSize = 15.sp)
@@ -1064,7 +1080,7 @@ private fun ReportMetricCard(
     Card(modifier = modifier, shape = RoundedCornerShape(12.dp)) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, fontSize = 12.sp)
-            Text("$" + value + " ريال", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tint)
+            Text(value.toString() + " ريال", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tint)
         }
     }
 }

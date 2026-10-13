@@ -151,6 +151,8 @@ class ReportCalculatorTest {
         assertEquals(50.0, result.netProfit, 0.001)
         assertEquals(100.0, result.salesByPaymentMethod[PaymentMethod.CASH] ?: 0.0, 0.001)
         assertEquals(0.0, result.salesByPaymentMethod[PaymentMethod.E_WALLET] ?: 0.0, 0.001)
+        assertEquals(100.0, result.salesByEmployee["كاشير"] ?: 0.0, 0.001)
+        assertEquals(0.0, result.salesByEmployee["كاشير آخر"] ?: 0.0, 0.001)
     }
 
     @Test
