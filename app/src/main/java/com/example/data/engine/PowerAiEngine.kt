@@ -125,7 +125,7 @@ class PowerAiEngine(private val db: AppDatabase) {
 
     private fun callGeminiApi(apiKey: String, prompt: String): String {
         // Never place credentials in the URL, where they can appear in logs or proxy metadata.
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 8000
