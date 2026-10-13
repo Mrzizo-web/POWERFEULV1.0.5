@@ -50,6 +50,7 @@ class DatabaseSeederOwnerRecoveryAndroidTest {
             assertTrue(recoveredOwner!!.isActive)
             assertEquals(owner.pinHash, recoveredOwner.pinHash)
             assertEquals(owner.pinSalt, recoveredOwner.pinSalt)
+            assertTrue(PasswordHasher.DEFAULT.verify("2468", recoveredOwner.pinSalt, recoveredOwner.pinHash))
             assertFalse(db.userDao().getUserById("inactive-cashier")!!.isActive)
         } finally {
             db.close()
