@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
 import com.example.domain.model.UserRole
 import com.example.domain.model.WalletTransferStatus
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +71,8 @@ fun AdminMainScreen(
     autoLockMinutes: String = "5"
 ) {
     var selectedTab by remember { mutableStateOf(AdminTab.PRODUCTS) }
+    val visibleTabs = visibleAdminTabs(currentUser.role)
+    val effectiveTab = visibleTabs.firstOrNull { it == selectedTab } ?: visibleTabs.firstOrNull()
 
     Scaffold(
         topBar = {
@@ -102,9 +106,9 @@ fun AdminMainScreen(
                         .verticalScroll(rememberScrollState()),
                     horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
                 ) {
-                AdminTab.values().forEach { tab ->
+                visibleTabs.forEach { tab ->
                     NavigationRailItem(
-                        selected = selectedTab == tab,
+                        selected = effectiveTab == tab,
                         onClick = { selectedTab = tab },
                         label = { Text(tab.titleAr, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
                         icon = {
@@ -140,7 +144,13 @@ fun AdminMainScreen(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                when (selectedTab) {
+                if (effectiveTab == null) {
+                    Text(
+                        text = "ليس لديك صلاحية الوصول إلى صفحات الإدارة",
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(24.dp)
+                    )
+                } else when (effectiveTab) {
                     AdminTab.PRODUCTS -> AdminProductsTab(categories, products, onAddProduct, onToggleProductActive)
                     AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe, mixtures)
                     AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
@@ -174,7 +184,12 @@ fun AdminMainScreen(
                         onAddEmployee = onAddEmployee,
                         onToggleActive = onToggleActive,
                         onRemoveUser = onRemoveUser,
-                        canManageUsers = currentUser.role == UserRole.OWNER
+                        canManageUsers = PermissionChecker.hasPermission(currentUser.role, AppPermission.MANAGE_EMPLOYEES),
+                        allowedRoles = if (currentUser.role == UserRole.ADMIN) {
+                            listOf(UserRole.CASHIER)
+                        } else {
+                            UserRole.values().filter { it != UserRole.OWNER }
+                        }
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)

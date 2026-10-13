@@ -358,7 +358,8 @@ fun AdminEmployeesTab(
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
     onToggleActive: (userId: String, active: Boolean) -> Unit,
     onRemoveUser: (userId: String) -> Unit = {},
-    canManageUsers: Boolean = true
+    canManageUsers: Boolean = true,
+    allowedRoles: List<UserRole> = UserRole.values().filter { it != UserRole.OWNER }
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var userPendingRemoval by remember { mutableStateOf<UserEntity?>(null) }
@@ -463,7 +464,7 @@ fun AdminEmployeesTab(
                             expanded = showRoleMenu,
                             onDismissRequest = { showRoleMenu = false }
                         ) {
-                            UserRole.values().filter { it != UserRole.OWNER }.forEach { role ->
+                            allowedRoles.forEach { role ->
                                 DropdownMenuItem(
                                     text = { Text(role.titleAr) },
                                     onClick = {
