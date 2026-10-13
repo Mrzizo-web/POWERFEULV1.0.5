@@ -49,7 +49,7 @@ class BackupRestoreEngine(
                 sale.totalAmount.toString(),
                 sale.discountAmount.toString(),
                 sale.netAmount.toString(),
-                sale.status.name
+                sale.status
             )
             sb.append(fields.joinToString(",") { csvCell(it) }).append('\n')
         }
