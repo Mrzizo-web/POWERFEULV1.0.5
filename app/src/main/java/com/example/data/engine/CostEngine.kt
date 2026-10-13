@@ -1,6 +1,7 @@
 package com.example.data.engine
 
 import com.example.data.local.dao.MixtureDao
+import com.example.data.local.dao.ProductDao
 import com.example.data.local.dao.RawMaterialDao
 import com.example.data.local.dao.RecipeDao
 import com.example.data.local.entity.RecipeItemEntity
@@ -8,7 +9,8 @@ import com.example.data.local.entity.RecipeItemEntity
 class CostEngine(
     private val rawMaterialDao: RawMaterialDao,
     private val recipeDao: RecipeDao,
-    private val mixtureDao: MixtureDao
+    private val mixtureDao: MixtureDao,
+    private val productDao: ProductDao? = null
 ) {
     suspend fun calculateRecipeTotalCost(recipeId: String): Double {
         val recipe = recipeDao.getRecipeById(recipeId)
@@ -56,6 +58,29 @@ class CostEngine(
         }
 
         throw IllegalArgumentException("مكوّن الوصفة لا يرتبط بمادة خام أو خلطة: " + item.name)
+    }
+
+    /**
+     * Refresh the current cost shown on active recipes/products after raw-material
+     * purchase prices change. Historical SaleEntity/SaleItemEntity rows are
+     * immutable snapshots and are never rewritten by this operation.
+     * Call inside the purchase transaction so cost and stock-price changes commit together.
+     */
+    suspend fun refreshActiveRecipeAndProductCosts() {
+        val products = productDao
+        for (recipe in recipeDao.getAllRecipesSync().filter { it.isActive }) {
+            val totalCost = calculateRecipeTotalCost(recipe.id)
+            if (!totalCost.isFinite() || totalCost < 0.0) {
+                throw IllegalArgumentException("تكلفة الوصفة غير صالحة: " + recipe.name)
+            }
+            if (recipe.calculatedCost != totalCost) {
+                recipeDao.updateRecipe(recipe.copy(calculatedCost = totalCost))
+            }
+            val product = products?.getProductById(recipe.productId)
+            if (product != null && (product.costPrice != totalCost || product.recipeId != recipe.id)) {
+                products.updateProduct(product.copy(costPrice = totalCost, recipeId = recipe.id))
+            }
+        }
     }
 
     suspend fun calculateMixtureUnitCost(mixtureId: String): Double {
