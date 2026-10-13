@@ -647,8 +647,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
-        if (user.role != UserRole.OWNER) {
-            snackbarMessage.value = "إضافة المستخدمين متاحة للمالك فقط"
+        if (!requirePermission(user, AppPermission.MANAGE_EMPLOYEES, "إضافة موظف")) return
+        if (user.role == UserRole.ADMIN && role != UserRole.CASHIER) {
+            snackbarMessage.value = "المدير يستطيع إنشاء حسابات الكاشير فقط؛ الأدوار الإشرافية متاحة للمالك"
             return
         }
         val cleanName = name.trim()
@@ -686,15 +687,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleUserActive(userId: String, isActive: Boolean) {
         val user = _currentUser.value ?: return
-        if (user.role != UserRole.OWNER) {
-            snackbarMessage.value = "إدارة المستخدمين متاحة للمالك فقط"
-            return
-        }
+        if (!requirePermission(user, AppPermission.MANAGE_EMPLOYEES, "تغيير حالة مستخدم")) return
         viewModelScope.launch(Dispatchers.IO) {
             val target = db.userDao().getUserById(userId)
             if (target == null) return@launch
             if (target.role == UserRole.OWNER || target.id == user.id) {
                 snackbarMessage.value = "لا يمكن تعطيل حساب المالك"
+                return@launch
+            }
+            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
+                snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
                 return@launch
             }
             db.userDao().updateUser(target.copy(isActive = isActive, updatedAt = System.currentTimeMillis()))
@@ -707,15 +709,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteUser(userId: String) {
         val user = _currentUser.value ?: return
-        if (user.role != UserRole.OWNER) {
-            snackbarMessage.value = "حذف المستخدمين متاح للمالك فقط"
-            return
-        }
+        if (!requirePermission(user, AppPermission.MANAGE_EMPLOYEES, "حذف مستخدم")) return
         viewModelScope.launch(Dispatchers.IO) {
             val target = db.userDao().getUserById(userId)
             if (target == null) return@launch
             if (target.role == UserRole.OWNER || target.id == user.id) {
                 snackbarMessage.value = "لا يمكن حذف حساب المالك"
+                return@launch
+            }
+            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
+                snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
                 return@launch
             }
             db.userDao().deleteUserById(target.id)
@@ -738,8 +741,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onResult(false, "المستخدم غير موجود")
                 return@launch
             }
-            if (user.id != target.id && user.role != UserRole.OWNER) {
+            if (user.id != target.id && !PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_EMPLOYEES)) {
                 onResult(false, "ليس لديك صلاحية تغيير كلمة السر")
+                return@launch
+            }
+            if (user.role == UserRole.ADMIN && user.id != target.id && target.role != UserRole.CASHIER) {
+                onResult(false, "المدير يستطيع تغيير PIN للكاشير فقط")
                 return@launch
             }
             if (user.id == target.id && !passwordHasher.verify(currentPin, target.pinSalt, target.pinHash)) {

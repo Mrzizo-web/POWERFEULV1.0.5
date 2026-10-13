@@ -4,11 +4,11 @@ import com.example.domain.model.UserRole
 
 object PermissionChecker {
     fun hasPermission(role: UserRole, permission: AppPermission): Boolean {
-        if (permission == AppPermission.MANAGE_SETTINGS || permission == AppPermission.MANAGE_EMPLOYEES) {
-            return role == UserRole.OWNER
-        }
+        if (permission == AppPermission.MANAGE_SETTINGS) return role == UserRole.OWNER
+        if (permission == AppPermission.MANAGE_EMPLOYEES) return role == UserRole.OWNER || role == UserRole.ADMIN
         return when (role) {
-            UserRole.OWNER, UserRole.ADMIN -> true
+            UserRole.OWNER -> true
+            UserRole.ADMIN -> permission == AppPermission.ACCESS_ADMIN
             UserRole.SUPERVISOR -> permission in setOf(
                 AppPermission.ACCESS_ADMIN,
                 AppPermission.PROCESS_SALE,
