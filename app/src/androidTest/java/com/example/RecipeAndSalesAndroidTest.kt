@@ -27,7 +27,7 @@ class RecipeAndSalesAndroidTest {
         id = "cashier-1",
         name = "كاشير تجريبي",
         username = "cashier_test",
-        role = UserRole.CASHIER
+        role = UserRole.OWNER
     )
 
     private val testShift = ShiftEntity(

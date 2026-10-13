@@ -323,9 +323,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun navigateTo(screen: AppScreen) {
         val user = _currentUser.value ?: return
-        if (screen == AppScreen.ADMIN && !PermissionChecker.hasPermission(user.role, AppPermission.VIEW_REPORTS)) {
+        if (screen == AppScreen.ADMIN && !PermissionChecker.hasPermission(user.role, AppPermission.ACCESS_ADMIN)) {
             viewModelScope.launch(Dispatchers.IO) {
-                logUnauthorizedAttempt(user, AppPermission.VIEW_REPORTS, "فتح لوحة الإدارة")
+                logUnauthorizedAttempt(user, AppPermission.ACCESS_ADMIN, "فتح لوحة الإدارة")
             }
             snackbarMessage.value = "ليس لديك صلاحية الوصول إلى الإدارة"
             return
