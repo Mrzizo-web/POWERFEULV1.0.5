@@ -486,24 +486,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addExpense(title: String, amount: Double, category: String, paidTo: String, notes: String = "") {
-        val user = _currentUser.value ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            val expense = ExpenseEntity(
-                shiftId = currentShift.value?.id ?: "",
-                userId = user.id,
-                userName = user.name,
-                title = title,
-                amount = amount,
-                category = category,
-                paidTo = paidTo,
-                notes = notes
-            )
-            db.expenseDao().insertExpense(expense)
-            db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "تسجيل مصروف", notes = "مصروف $title بقيمة $amount")
-            )
-            snackbarMessage.value = "تم تسجيل المصروف بنجاح"
-        }
+        recordExpenseSafely(
+            title = title,
+            category = category,
+            amount = amount,
+            paymentMethod = PaymentMethod.CASH,
+            paidTo = paidTo,
+            notes = notes
+        )
     }
 
     fun addPurchase(supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String = "") {
@@ -714,32 +704,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addExpense(title: String, category: String, amount: Double, isCash: Boolean, paidTo: String, notes: String) {
+        recordExpenseSafely(
+            title = title,
+            category = category,
+            amount = amount,
+            paymentMethod = if (isCash) PaymentMethod.CASH else PaymentMethod.E_WALLET,
+            paidTo = paidTo,
+            notes = notes
+        )
+    }
+
+    private fun recordExpenseSafely(
+        title: String,
+        category: String,
+        amount: Double,
+        paymentMethod: PaymentMethod,
+        paidTo: String,
+        notes: String
+    ) {
         val user = _currentUser.value ?: return
-        val shift = currentShift.value
+        val shiftId = currentShift.value?.id.orEmpty()
         viewModelScope.launch(Dispatchers.IO) {
-            val exp = ExpenseEntity(
-                shiftId = shift?.id ?: "",
-                userId = user.id,
-                userName = user.name,
-                title = title,
-                category = category,
-                amount = amount,
-                paidTo = paidTo,
-                notes = notes,
-                paymentMethod = if (isCash) PaymentMethod.CASH else PaymentMethod.E_WALLET
-            )
-            db.expenseDao().insertExpense(exp)
-            if (shift != null && isCash) {
-                db.shiftDao().insertCashMovement(
-                    ShiftCashMovementEntity(
-                        shiftId = shift.id,
-                        type = "EXPENSE",
-                        amount = amount,
-                        notes = "مصروف: $title"
-                    )
+            try {
+                ExpenseEngine(db).recordExpense(
+                    title = title,
+                    amount = amount,
+                    category = category,
+                    paidTo = paidTo,
+                    notes = notes,
+                    paymentMethod = paymentMethod,
+                    shiftId = shiftId,
+                    user = user
                 )
+                snackbarMessage.value = "تم تسجيل المصروف وحفظ أثره على النقدية والشفت"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر تسجيل المصروف"
             }
-            snackbarMessage.value = "تم تسجيل المصروف بنجاح"
         }
     }
 

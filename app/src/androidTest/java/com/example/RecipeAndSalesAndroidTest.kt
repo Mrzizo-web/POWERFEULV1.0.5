@@ -650,4 +650,50 @@ class RecipeAndSalesAndroidTest {
     }
 
 
+    @Test
+    fun cashExpenseIsSubtractedFromDrawerAndVoidPreservesThatExpense() = runBlocking {
+        val product = ProductEntity(
+            id = "expense-void-product",
+            name = "منتج اختبار المصروف والإلغاء",
+            categoryId = "cat-test",
+            price = 4500.0,
+            costPrice = 0.0
+        )
+        db.productDao().insertProduct(product)
+
+        val saleResult = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = product, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 4500.0
+        )
+        assertTrue(saleResult is SaleResult.Success)
+        val sale = (saleResult as SaleResult.Success).sale
+        assertEquals(9500.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+
+        ExpenseEngine(db).recordExpense(
+            title = "ماء وتنظيف",
+            amount = 600.0,
+            category = "مرافق",
+            paidTo = "مورد",
+            notes = "اختبار نقدية الشفت",
+            paymentMethod = PaymentMethod.CASH,
+            shiftId = testShift.id,
+            user = testUser
+        )
+        val afterExpense = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals(8900.0, afterExpense.expectedCash, 0.001)
+        assertEquals(600.0, afterExpense.totalExpensesCash, 0.001)
+        assertEquals(1, db.shiftDao().getCashMovements(testShift.id).first().size)
+
+        val voidResult = salesEngine.voidSale(sale.id, "اختبار إلغاء بعد مصروف نقدي", testUser)
+        assertTrue(voidResult.isSuccess)
+        val afterVoid = db.shiftDao().getShiftById(testShift.id)!!
+        assertEquals("Void must reverse only the sale and preserve the already paid cash expense", 4400.0, afterVoid.expectedCash, 0.001)
+        assertEquals(600.0, afterVoid.totalExpensesCash, 0.001)
+        assertEquals(1, db.expenseDao().getAllExpenses().first().size)
+    }
+
+
 }

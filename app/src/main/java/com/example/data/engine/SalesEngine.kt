@@ -286,7 +286,7 @@ class SalesEngine(
                     val reversedShift = when (sale.paymentMethod) {
                         PaymentMethod.CASH -> shift.copy(
                             totalCashSales = (shift.totalCashSales - sale.netAmount).coerceAtLeast(0.0),
-                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(shift.openingCash)
+                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(0.0)
                         )
                         PaymentMethod.E_WALLET -> shift.copy(
                             totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0)
