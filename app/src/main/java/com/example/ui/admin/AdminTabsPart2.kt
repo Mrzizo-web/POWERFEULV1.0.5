@@ -520,7 +520,9 @@ fun AdminPurchasesTab(
 @Composable
 fun AdminDebtsTab(
     customers: List<CustomerEntity>,
-    onAddCustomer: (name: String, phone: String, creditLimit: Double, allowDebt: Boolean) -> Unit = { _, _, _, _ -> }
+    hasOpenShift: Boolean,
+    onAddCustomer: (name: String, phone: String, creditLimit: Double, allowDebt: Boolean) -> Unit = { _, _, _, _ -> },
+    onPayDebt: (customerId: String, amount: Double, isCash: Boolean, notes: String) -> Unit
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var name by remember { mutableStateOf("") }
@@ -528,34 +530,63 @@ fun AdminDebtsTab(
     var limitText by remember { mutableStateOf("1000") }
     var allowDebt by remember { mutableStateOf(true) }
 
+    var payingCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+    var paymentAmountText by remember { mutableStateOf("") }
+    var paymentNotes by remember { mutableStateOf("") }
+    var payCash by remember { mutableStateOf(true) }
+    var paymentError by remember { mutableStateOf<String?>(null) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("العملاء والديون (${customers.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("العملاء والديون (\${customers.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Button(onClick = { showDialog = true }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("إضافة عميل")
             }
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        if (!hasOpenShift) {
+            Text(
+                "لا يوجد شفت مفتوح: تحصيل الدين نقدًا غير متاح، ويمكن تسجيل السداد بالمحفظة.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 6.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-            items(customers) { c ->
+            items(customers, key = { it.id }) { customer ->
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(c.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("هاتف: ${c.phone} • دين: ${c.currentDebt} ريال • سقف: ${c.creditLimit} ريال", fontSize = 12.sp)
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(customer.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(
+                            "هاتف: \${customer.phone} • الدين: \${customer.currentDebt} ريال • السقف: \${customer.creditLimit} ريال",
+                            fontSize = 12.sp
+                        )
+                        if (customer.currentDebt > 0.0) {
+                            Button(
+                                onClick = {
+                                    payingCustomer = customer
+                                    paymentAmountText = customer.currentDebt.toString()
+                                    paymentNotes = ""
+                                    payCash = hasOpenShift
+                                    paymentError = null
+                                },
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Icon(Icons.Default.Payments, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("تحصيل سداد دين")
+                            }
+                        } else {
+                            Text("لا يوجد دين مستحق", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -575,22 +606,90 @@ fun AdminDebtsTab(
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val limit = limitText.toDoubleOrNull() ?: 1000.0
-                        if (name.isNotBlank()) {
-                            onAddCustomer(name, phone, limit, allowDebt)
+                Button(onClick = {
+                    val limit = limitText.toDoubleOrNull()
+                    when {
+                        name.isBlank() -> Unit
+                        limit == null || !limit.isFinite() || limit < 0.0 -> Unit
+                        else -> {
+                            onAddCustomer(name.trim(), phone.trim(), limit, allowDebt)
                             showDialog = false
                             name = ""
                             phone = ""
                         }
                     }
-                ) {
-                    Text("حفظ")
-                }
+                }) { Text("حفظ") }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    payingCustomer?.let { customer ->
+        AlertDialog(
+            onDismissRequest = { payingCustomer = null },
+            title = { Text("سداد دين العميل: \${customer.name}") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("الرصيد المستحق: \${customer.currentDebt} ريال")
+                    OutlinedTextField(
+                        value = paymentAmountText,
+                        onValueChange = { paymentAmountText = it; paymentError = null },
+                        label = { Text("مبلغ السداد (ريال)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = payCash,
+                            onClick = { payCash = true; paymentError = null },
+                            enabled = hasOpenShift
+                        )
+                        Text("نقدي", color = if (hasOpenShift) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        RadioButton(
+                            selected = !payCash,
+                            onClick = { payCash = false; paymentError = null }
+                        )
+                        Text("محفظة إلكترونية")
+                    }
+                    if (payCash && !hasOpenShift) {
+                        Text("يجب فتح شفت لتسجيل سداد نقدي.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                    OutlinedTextField(
+                        value = paymentNotes,
+                        onValueChange = { paymentNotes = it },
+                        label = { Text("ملاحظات (اختياري)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (paymentError != null) {
+                        Text(paymentError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val amount = paymentAmountText.toDoubleOrNull()
+                    when {
+                        amount == null || !amount.isFinite() || amount <= 0.0 ->
+                            paymentError = "أدخل مبلغ سداد موجبًا وصالحًا"
+                        amount > customer.currentDebt ->
+                            paymentError = "مبلغ السداد لا يمكن أن يتجاوز الدين المستحق"
+                        payCash && !hasOpenShift ->
+                            paymentError = "افتح شفتًا قبل تحصيل الدين نقدًا"
+                        else -> {
+                            onPayDebt(customer.id, amount, payCash, paymentNotes.trim())
+                            payingCustomer = null
+                        }
+                    }
+                }) { Text("تأكيد السداد") }
+            },
+            dismissButton = {
+                TextButton(onClick = { payingCustomer = null }) { Text("إلغاء") }
             }
         )
     }

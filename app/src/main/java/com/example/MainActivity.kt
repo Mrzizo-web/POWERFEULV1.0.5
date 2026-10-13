@@ -216,6 +216,11 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.addCustomer(name, phone, limit, allowDebt)
                                             },
+                                            hasOpenShift = currentShift != null,
+                                            onPayDebt = { customerId, amount, isCash, notes ->
+                                                viewModel.onUserActivity()
+                                                viewModel.recordDebtPayment(customerId, amount, isCash, notes)
+                                            },
                                             onAddExpense = { title, amount, category, paidTo, notes ->
                                                 viewModel.onUserActivity()
                                                 viewModel.addExpense(title, amount, category, paidTo, notes)

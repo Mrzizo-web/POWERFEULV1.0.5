@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.example.data.engine.*
 import com.example.data.local.AppDatabase
 import com.example.data.seed.DatabaseSeeder
@@ -561,30 +562,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val duplicate = db.supplierDao().getAllSuppliers().first().any {
-                    it.name.trim().equals(cleanedName, ignoreCase = true)
-                }
-                require(!duplicate) { "يوجد مورد بهذا الاسم بالفعل" }
-                val supplier = SupplierEntity(
-                    name = cleanedName,
-                    phone = phone.trim(),
-                    address = address.trim(),
-                    notes = notes.trim(),
-                    isActive = true
-                )
-                db.supplierDao().insertSupplier(supplier)
-                db.auditLogDao().insertLog(
-                    AuditLogEntity(
-                        userId = user.id,
-                        userName = user.name,
-                        userRole = user.role.name,
-                        action = "SUPPLIER_CREATED",
-                        entityType = "SUPPLIER",
-                        entityId = supplier.id,
-                        newValue = supplier.name,
-                        notes = "تم إنشاء مورد محلي لاستخدامه في فواتير المشتريات"
+                val supplier = db.withTransaction {
+                    val duplicate = db.supplierDao().getAllSuppliersSync().any {
+                        it.name.trim().equals(cleanedName, ignoreCase = true)
+                    }
+                    require(!duplicate) { "يوجد مورد بهذا الاسم بالفعل" }
+                    val created = SupplierEntity(
+                        name = cleanedName,
+                        phone = phone.trim(),
+                        address = address.trim(),
+                        notes = notes.trim(),
+                        isActive = true
                     )
-                )
+                    db.supplierDao().insertSupplier(created)
+                    db.auditLogDao().insertLog(
+                        AuditLogEntity(
+                            userId = user.id,
+                            userName = user.name,
+                            userRole = user.role.name,
+                            action = "SUPPLIER_CREATED",
+                            entityType = "SUPPLIER",
+                            entityId = created.id,
+                            newValue = created.name,
+                            notes = "تم إنشاء مورد محلي لاستخدامه في فواتير المشتريات"
+                        )
+                    )
+                    created
+                }
                 withContext(Dispatchers.Main) {
                     snackbarMessage.value = "تم حفظ المورد ${supplier.name}"
                 }

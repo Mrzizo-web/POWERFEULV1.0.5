@@ -52,6 +52,8 @@ fun AdminMainScreen(
     onAddSupplier: (name: String, phone: String, address: String, notes: String) -> Unit,
     onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
     onAddCustomer: (name: String, phone: String, limit: Double, allowDebt: Boolean) -> Unit = { _, _, _, _ -> },
+    hasOpenShift: Boolean = false,
+    onPayDebt: (customerId: String, amount: Double, isCash: Boolean, notes: String) -> Unit = { _, _, _, _ -> },
     onAddExpense: (title: String, amount: Double, category: String, paidTo: String, notes: String) -> Unit = { _, _, _, _, _ -> },
     onAddRawMaterial: (name: String, unit: String, stock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> },
     onAddStock: (materialId: String, amount: Double) -> Unit = { _, _ -> },
@@ -169,7 +171,12 @@ fun AdminMainScreen(
                         onCreatePurchase = onCreatePurchase,
                         onAddSupplier = onAddSupplier
                     )
-                    AdminTab.DEBTS -> AdminDebtsTab(customers, onAddCustomer)
+                    AdminTab.DEBTS -> AdminDebtsTab(
+                        customers = customers,
+                        hasOpenShift = hasOpenShift,
+                        onAddCustomer = onAddCustomer,
+                        onPayDebt = onPayDebt
+                    )
                     AdminTab.EXPENSES -> AdminExpensesTab(expenses, onAddExpense)
                     AdminTab.SHIFTS -> AdminShiftsTab(shifts)
                     AdminTab.WALLETS -> AdminWalletTab(
