@@ -489,7 +489,7 @@ fun TestSmsDialog(
                     val body = when (selectedWallet) {
                         "JEEB" -> "اضيف $amountClean ر.ي تحويل مشترك رص:75000ر.ي من $senderClean-777123456"
                         "FLOOSAK" -> "استلمت حوالة من $senderClean بمبلغ $amountClean ر.ي رصيدك 25000 ر.ي"
-                        else -> "لقد استلمت ر.ي $amountClean كقيمة مشتريات بمرجع $txIdClean من $senderClean"
+                        else -> "استلمت YER $amountClean كقيمة مشتريات بمرجع $txIdClean من $senderClean"
                     }
                     onSend(selectedWallet, body)
                 }
