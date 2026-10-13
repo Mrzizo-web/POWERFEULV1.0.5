@@ -154,6 +154,11 @@ class PurchaseEngine(
             )
         }
 
+        // Update current recipe/product costs from the weighted-average material costs.
+        // This remains in the same Room transaction as the purchase and stock movements.
+        CostEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao(), db.productDao())
+            .refreshActiveRecipeAndProductCosts()
+
         db.auditLogDao().insertLog(
             AuditLogEntity(
                 userId = user.id,
