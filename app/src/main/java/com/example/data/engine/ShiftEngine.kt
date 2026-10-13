@@ -9,6 +9,10 @@ import com.example.data.local.entity.UserEntity
 import com.example.domain.model.ShiftStatus
 
 class ShiftEngine(private val db: AppDatabase) {
+    private companion object {
+        const val CASH_RECONCILIATION_EPSILON = 0.01
+    }
+
     private val shiftDao = db.shiftDao()
     private val auditLogDao = db.auditLogDao()
 
@@ -83,6 +87,11 @@ class ShiftEngine(private val db: AppDatabase) {
         }
         if (handedOverCash > actualCash || leftForNextShift > actualCash) {
             return@withTransaction ShiftResult.Error("مبالغ التسليم والمتبقي لا يمكن أن تتجاوز النقدية الفعلية")
+        }
+        if (kotlin.math.abs((handedOverCash + leftForNextShift) - actualCash) > CASH_RECONCILIATION_EPSILON) {
+            return@withTransaction ShiftResult.Error(
+                "يجب توزيع كامل النقدية الفعلية بين المبلغ المسلّم للإدارة والمبلغ المتروك للشفت القادم"
+            )
         }
 
         val discrepancy = actualCash - shift.expectedCash

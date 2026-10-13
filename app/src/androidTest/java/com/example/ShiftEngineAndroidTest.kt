@@ -120,4 +120,28 @@ class ShiftEngineAndroidTest {
         assertTrue(result is ShiftResult.Error)
         assertTrue(db.shiftDao().getAllShifts().first().isEmpty())
     }
+    @Test
+    fun closeRequiresEveryCountedCashUnitToBeAccountedFor() = runBlocking {
+        val started = engine.startShift(owner, 5000.0) as ShiftResult.Success
+        val mismatch = engine.closeShift(
+            started.shift.id,
+            actualCash = 4800.0,
+            handedOverCash = 3000.0,
+            leftForNextShift = 1700.0,
+            user = owner
+        )
+        assertTrue(mismatch is ShiftResult.Error)
+        assertEquals(ShiftStatus.OPEN, db.shiftDao().getShiftById(started.shift.id)!!.status)
+
+        val reconciled = engine.closeShift(
+            started.shift.id,
+            actualCash = 4800.0,
+            handedOverCash = 3000.0,
+            leftForNextShift = 1800.0,
+            user = owner
+        )
+        assertTrue(reconciled is ShiftResult.Success)
+    }
+
+
 }
