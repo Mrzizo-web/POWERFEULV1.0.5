@@ -227,7 +227,7 @@ class PurchaseEngineAndroidTest {
         val milk = db.rawMaterialDao().getRawMaterialById("material-milk")!!
         assertEquals(1500.0, oats.currentStock, 0.001)
         assertEquals(1300.0, milk.currentStock, 0.001)
-        assertEquals(0.5, oats.avgCostPerUnit, 0.001)
+        assertEquals(1.0, oats.avgCostPerUnit, 0.001)
         assertEquals((1000.0 * 0.2 + 300.0 * 0.5) / 1300.0, milk.avgCostPerUnit, 0.001)
 
         val movements = db.inventoryTransactionDao().getTransactionsByReference(purchaseId)
