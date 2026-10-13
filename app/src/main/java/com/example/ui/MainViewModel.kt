@@ -551,6 +551,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun addSupplier(name: String, phone: String = "", address: String = "", notes: String = "") {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PURCHASES, "إضافة مورد")) return
+        val cleanedName = name.trim()
+        if (cleanedName.isBlank()) {
+            snackbarMessage.value = "اسم المورد مطلوب"
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val duplicate = db.supplierDao().getAllSuppliers().first().any {
+                    it.name.trim().equals(cleanedName, ignoreCase = true)
+                }
+                require(!duplicate) { "يوجد مورد بهذا الاسم بالفعل" }
+                val supplier = SupplierEntity(
+                    name = cleanedName,
+                    phone = phone.trim(),
+                    address = address.trim(),
+                    notes = notes.trim(),
+                    isActive = true
+                )
+                db.supplierDao().insertSupplier(supplier)
+                db.auditLogDao().insertLog(
+                    AuditLogEntity(
+                        userId = user.id,
+                        userName = user.name,
+                        userRole = user.role.name,
+                        action = "SUPPLIER_CREATED",
+                        entityType = "SUPPLIER",
+                        entityId = supplier.id,
+                        newValue = supplier.name,
+                        notes = "تم إنشاء مورد محلي لاستخدامه في فواتير المشتريات"
+                    )
+                )
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = "تم حفظ المورد ${supplier.name}"
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = error.message ?: "تعذر حفظ المورد"
+                }
+            }
+        }
+    }
+
     fun addProduct(name: String, catId: String, price: Double, cost: Double = 0.0) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "إضافة منتج")) return
