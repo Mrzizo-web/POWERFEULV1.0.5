@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import android.net.Uri
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -62,8 +64,10 @@ fun AdminMainScreen(
     onRetryAllQueue: () -> Unit = {},
     onClearCompletedQueue: () -> Unit = {},
     onIngestTestSms: (sender: String, body: String) -> Unit = { _, _ -> },
-    onExportSalesCsv: () -> Unit,
-    onCreateBackupJson: () -> Unit,
+    onExportSalesCsv: (Uri) -> Unit,
+    onExportInventoryCsv: (Uri) -> Unit,
+    onCreateBackup: (Uri, String) -> Unit,
+    onRestoreBackup: (Uri, String) -> Unit,
     insights: List<com.example.data.engine.AiInsight> = emptyList(),
     onAskAi: suspend (String) -> String = { "" },
     onSaveApiKey: (String) -> Unit = {},
@@ -178,7 +182,13 @@ fun AdminMainScreen(
                         onSaveSetting = onSaveSetting
                     )
                     AdminTab.AI_ASSISTANT -> AdminAiTab(insights, onAskAi, onSaveApiKey)
-                    AdminTab.BACKUP -> AdminBackupTab(onExportSalesCsv, onCreateBackupJson, backupStatusMessage)
+                    AdminTab.BACKUP -> AdminBackupTab(
+                        onExportSalesCsv = onExportSalesCsv,
+                        onExportInventoryCsv = onExportInventoryCsv,
+                        onCreateBackup = onCreateBackup,
+                        onRestoreBackup = onRestoreBackup,
+                        backupStatusMessage = backupStatusMessage
+                    )
                     AdminTab.EMPLOYEES -> AdminEmployeesTab(
                         users = users,
                         onAddEmployee = onAddEmployee,
