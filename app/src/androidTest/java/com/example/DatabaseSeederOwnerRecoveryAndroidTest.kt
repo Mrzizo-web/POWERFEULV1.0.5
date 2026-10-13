@@ -7,6 +7,7 @@ import com.example.data.local.entity.UserEntity
 import com.example.data.seed.DatabaseSeeder
 import com.example.domain.model.UserRole
 import com.example.security.PasswordHasher
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,7 +17,7 @@ import org.junit.Test
 
 class DatabaseSeederOwnerRecoveryAndroidTest {
     @Test
-    fun reactivatesOnlyKnownOwnerWhenNoActiveUsersRemainAndPreservesCredentials() = runBlocking {
+    fun seederPreservesDisabledOwnerButLoginQueryAllowsCredentialGatedRecovery() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
@@ -47,11 +48,14 @@ class DatabaseSeederOwnerRecoveryAndroidTest {
 
             val recoveredOwner = db.userDao().getUserById(owner.id)
             assertNotNull(recoveredOwner)
-            assertTrue(recoveredOwner!!.isActive)
+            assertFalse("Seeding must not reactivate a disabled owner", recoveredOwner!!.isActive)
             assertEquals(owner.pinHash, recoveredOwner.pinHash)
             assertEquals(owner.pinSalt, recoveredOwner.pinSalt)
             assertTrue(PasswordHasher.DEFAULT.verify("2468", recoveredOwner.pinSalt, recoveredOwner.pinHash))
             assertFalse(db.userDao().getUserById("inactive-cashier")!!.isActive)
+
+            val loginUsers = db.userDao().getLoginUsers(owner.id).first()
+            assertEquals("Only the known owner should be offered for credential-gated recovery", listOf(owner.id), loginUsers.map { it.id })
         } finally {
             db.close()
         }
@@ -87,6 +91,10 @@ class DatabaseSeederOwnerRecoveryAndroidTest {
             DatabaseSeeder.seedIfNeeded(db)
 
             assertTrue(!db.userDao().getUserById(owner.id)!!.isActive)
+            assertEquals(
+                listOf("active-cashier"),
+                db.userDao().getLoginUsers(owner.id).first().map { it.id }
+            )
         } finally {
             db.close()
         }
