@@ -6,6 +6,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entity.UserEntity
 import com.example.data.seed.DatabaseSeeder
 import com.example.domain.model.UserRole
+import com.example.security.PasswordHasher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -21,12 +22,13 @@ class DatabaseSeederOwnerRecoveryAndroidTest {
             .allowMainThreadQueries()
             .build()
         try {
+            val existingCredentials = PasswordHasher.DEFAULT.hash("2468")
             val owner = UserEntity(
                 id = "user-owner-ziad",
                 name = "Local Owner",
                 username = "owner",
-                pinHash = "existing-hash",
-                pinSalt = "existing-salt",
+                pinHash = existingCredentials.hashHex,
+                pinSalt = existingCredentials.saltHex,
                 role = UserRole.OWNER,
                 isActive = false
             )
