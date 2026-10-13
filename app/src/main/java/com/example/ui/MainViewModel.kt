@@ -116,7 +116,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val _cartItems = MutableStateFlow<List<CartItem>>(emptyList())
     val cartItems: StateFlow<List<CartItem>> = _cartItems.asStateFlow()
 
-    val userProfiles: StateFlow<List<UserProfile>> = db.userDao().getAllActiveUsers()
+    val userProfiles: StateFlow<List<UserProfile>> = db.userDao().getLoginUsers("user-owner-ziad")
         .map { list ->
             list.map {
                 val isLocked = lockoutPolicy.isCurrentlyLocked(it.lockedUntil)
@@ -223,7 +223,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch(Dispatchers.IO) {
             val user = db.userDao().getUserById(userId)
-            if (user == null || !user.isActive) {
+            if (user == null) {
+                loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"
+                return@launch
+            }
+            // A disabled owner may recover access only when no active users remain,
+            // and only by proving an existing non-empty salted PIN.
+            val ownerRecoveryMode = !user.isActive &&
+                user.id == "user-owner-ziad" &&
+                user.role == UserRole.OWNER &&
+                db.userDao().countActiveUsers() == 0 &&
+                user.pinHash.isNotBlank() &&
+                user.pinSalt.isNotBlank()
+            if (!user.isActive && !ownerRecoveryMode) {
                 loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"
                 return@launch
             }
@@ -265,20 +277,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val valid = passwordHasher.verify(rawPin, user.pinSalt, user.pinHash)
             if (valid) {
-                db.userDao().updateUser(user.copy(failedAttempts = 0, lockedUntil = null, lastLoginAt = System.currentTimeMillis()))
-                _currentUser.value = user
+                val authenticatedUser = user.copy(
+                    isActive = user.isActive || ownerRecoveryMode,
+                    failedAttempts = 0,
+                    lockedUntil = null,
+                    lastLoginAt = System.currentTimeMillis()
+                )
+                db.userDao().updateUser(authenticatedUser)
+                _currentUser.value = authenticatedUser
                 sessionManager.unlock()
                 db.auditLogDao().insertLog(
                     AuditLogEntity(
-                        userId = user.id,
-                        userName = user.name,
-                        userRole = user.role.name,
-                        action = "تسجيل دخول",
-                        notes = "تم تسجيل الدخول بنجاح"
+                        userId = authenticatedUser.id,
+                        userName = authenticatedUser.name,
+                        userRole = authenticatedUser.role.name,
+                        action = if (ownerRecoveryMode) "استرداد حساب المالك" else "تسجيل دخول",
+                        notes = if (ownerRecoveryMode) {
+                            "تم استرداد حساب المالك بعد التحقق من PIN الحالي"
+                        } else {
+                            "تم تسجيل الدخول بنجاح"
+                        }
                     )
                 )
                 _activeScreen.value = AppScreen.POS
                 loginErrorMessage.value = null
+                if (ownerRecoveryMode) {
+                    snackbarMessage.value = "تم استرداد حساب المالك بعد التحقق من PIN الحالي"
+                }
             } else {
                 val newAttempts = user.failedAttempts + 1
                 val lockedUntil = if (lockoutPolicy.shouldLock(newAttempts)) lockoutPolicy.calculateLockoutUntil() else null
