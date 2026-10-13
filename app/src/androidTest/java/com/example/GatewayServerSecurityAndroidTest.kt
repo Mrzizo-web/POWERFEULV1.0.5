@@ -199,4 +199,28 @@ class GatewayServerSecurityAndroidTest {
             return socket.getInputStream().bufferedReader(Charsets.UTF_8).use { it.readText() }
         }
     }
+    @Test
+    fun authenticatedIngestRejectsMissingReceivedAtInsteadOfUsingProcessingTime() {
+        val eventId = UUID.randomUUID().toString()
+        val payload = JSONObject()
+            .put("sender", "FLOOSAK")
+            .put("body", "استلمت حوالة من حاشد بزدان بمبلغ 800.00 ر.ي رصيدك 1500.00 ر.ي")
+            .toString()
+        val timestamp = System.currentTimeMillis().toString()
+        val signature = GatewayRequestSigner.sign(
+            token, "POST", "/api/sms/ingest", timestamp, eventId, deviceId, payload
+        )
+        val headers = mapOf(
+            GatewayRequestSigner.DEVICE_ID_HEADER to deviceId,
+            GatewayRequestSigner.EVENT_ID_HEADER to eventId,
+            GatewayRequestSigner.TIMESTAMP_HEADER to timestamp,
+            GatewayRequestSigner.SIGNATURE_HEADER to signature
+        )
+
+        val response = sendRequest("POST", "/api/sms/ingest", headers, payload)
+        assertTrue("Missing original SMS timestamp must be rejected: $response", response.startsWith("HTTP/1.1 400"))
+        assertEquals(null, runBlocking { db.walletDao().getSmsById(eventId) })
+        assertEquals(0, runBlocking { db.walletDao().getAllTransactionsSync().size })
+    }
+
 }

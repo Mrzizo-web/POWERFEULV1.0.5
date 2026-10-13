@@ -254,10 +254,13 @@ class GatewayServer(
                 }
                 val sender = if (payload.isNull("sender")) "" else payload.optString("sender", "").trim()
                 val smsBody = if (payload.isNull("body")) "" else payload.optString("body", "")
+                // The Gateway phone supplies the original SMS arrival time. Never
+                // replace a missing timestamp with server processing time, because that
+                // could bind a delayed SMS to the wrong cashier shift.
                 val receivedAt = if (payload.has("receivedAt") && !payload.isNull("receivedAt")) {
                     payload.optLong("receivedAt", -1L)
                 } else {
-                    System.currentTimeMillis()
+                    -1L
                 }
                 if (sender.isBlank() || smsBody.isBlank() || receivedAt <= 0L) {
                     400 to JSONObject().put("error", "sender, body and a positive receivedAt are required").toString()

@@ -235,16 +235,20 @@ fun AdminWalletTab(
                                 OutlinedTextField(
                                     value = gatewayToken,
                                     onValueChange = { gatewayToken = it },
-                                    label = { Text("Gateway Token المشترك") },
+                                    label = { Text("Gateway Token المشترك (32 حرفًا فأكثر)") },
                                     singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Button(
                                     onClick = {
                                         onSaveSetting("gateway_device_id", gatewayDeviceId.trim())
-                                        onSaveSetting("gateway_token", gatewayToken.trim())
+                                        if (gatewayToken.isNotBlank()) {
+                                            onSaveSetting("gateway_token", gatewayToken.trim())
+                                        }
                                     },
-                                    enabled = gatewayDeviceId.isNotBlank() && gatewayToken.isNotBlank()
+                                    enabled = gatewayDeviceId.isNotBlank() &&
+                                        (gatewayToken.isBlank() || gatewayToken.trim().length >= 32)
                                 ) {
                                     Text("حفظ بيانات أمان البوابة")
                                 }
