@@ -542,7 +542,7 @@ fun AdminDebtsTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("العملاء والديون (\${customers.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("العملاء والديون (${customers.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Button(onClick = { showDialog = true }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
@@ -567,7 +567,7 @@ fun AdminDebtsTab(
                     Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(customer.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(
-                            "هاتف: \${customer.phone} • الدين: \${customer.currentDebt} ريال • السقف: \${customer.creditLimit} ريال",
+                            "هاتف: ${customer.phone} • الدين: ${customer.currentDebt} ريال • السقف: ${customer.creditLimit} ريال",
                             fontSize = 12.sp
                         )
                         if (customer.currentDebt > 0.0) {
@@ -581,7 +581,7 @@ fun AdminDebtsTab(
                                 },
                                 modifier = Modifier.align(Alignment.End)
                             ) {
-                                Icon(Icons.Default.Payments, contentDescription = null)
+                                Icon(Icons.Default.Add, contentDescription = null)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("تحصيل سداد دين")
                             }
@@ -629,13 +629,13 @@ fun AdminDebtsTab(
     payingCustomer?.let { customer ->
         AlertDialog(
             onDismissRequest = { payingCustomer = null },
-            title = { Text("سداد دين العميل: \${customer.name}") },
+            title = { Text("سداد دين العميل: ${customer.name}") },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("الرصيد المستحق: \${customer.currentDebt} ريال")
+                    Text("الرصيد المستحق: ${customer.currentDebt} ريال")
                     OutlinedTextField(
                         value = paymentAmountText,
                         onValueChange = { paymentAmountText = it; paymentError = null },
