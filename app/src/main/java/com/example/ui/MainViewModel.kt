@@ -230,12 +230,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             // A disabled owner may recover access only when no active users remain,
             // and only by proving an existing non-empty salted PIN.
-            val ownerRecoveryMode = !user.isActive &&
-                user.id == "user-owner-ziad" &&
-                user.role == UserRole.OWNER &&
-                db.userDao().countActiveUsers() == 0 &&
-                user.pinHash.isNotBlank() &&
-                user.pinSalt.isNotBlank()
+            val ownerRecoveryMode = OwnerRecoveryPolicy.isEligible(
+                user,
+                db.userDao().countActiveUsers()
+            )
             if (!user.isActive && !ownerRecoveryMode) {
                 loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"
                 return@launch
