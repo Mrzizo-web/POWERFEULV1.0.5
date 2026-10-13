@@ -158,6 +158,12 @@ class DatabaseMigrationAndroidTest {
         )
         raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
         raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        // Recreate the affected v4 table shape so MIGRATION_4_5 actually has to
+        // add these columns. Lowering user_version alone leaves a v5 schema behind.
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalCashDebtPayments")
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
         raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")

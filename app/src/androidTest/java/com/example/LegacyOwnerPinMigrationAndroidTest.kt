@@ -49,6 +49,14 @@ class LegacyOwnerPinMigrationAndroidTest {
             "INSERT INTO users (id, name, username, pin, role, phone, isActive, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             arrayOf<Any?>("legacy-employee", "موظف قديم", "cashier-old", "2468", "CASHIER", "", 1, 1001L)
         )
+        // Simulate the pre-v5 table layout for the columns introduced by migration 4->5.
+        // Lowering user_version alone would keep the current columns and make this test invalid.
+        raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
+        raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalCashDebtPayments")
         raw.execSQL("PRAGMA user_version = 1")
         bootstrap.close()
 
