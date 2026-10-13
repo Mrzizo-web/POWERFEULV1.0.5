@@ -696,4 +696,30 @@ class RecipeAndSalesAndroidTest {
     }
 
 
+    @Test
+    fun saleRejectsStaleCartPriceWithoutWritingInvoiceOrCash() = runBlocking {
+        val persistedProduct = ProductEntity(
+            id = "stale-cart-price-product",
+            name = "منتج تغيّر سعره",
+            categoryId = "cat-test",
+            price = 150.0,
+            costPrice = 0.0
+        )
+        db.productDao().insertProduct(persistedProduct)
+        val staleCartProduct = persistedProduct.copy(price = 100.0)
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = staleCartProduct, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 100.0
+        )
+
+        assertTrue("A stale cart price must be rejected", result is SaleResult.Error)
+        assertTrue((result as SaleResult.Error).message.contains("تغير سعر المنتج"))
+        assertEquals(0, db.saleDao().getSalesCount())
+        assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
 }

@@ -24,6 +24,10 @@ class SalesEngine(
     private val auditLogDao = db.auditLogDao()
     private val costEngine = CostEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao())
 
+    private companion object {
+        const val PRICE_EPSILON = 0.001
+    }
+
     suspend fun executeSale(
         shift: ShiftEntity,
         user: UserEntity,
@@ -112,6 +116,11 @@ class SalesEngine(
                             ?: throw InventoryValidationException("المنتج لم يعد موجودًا: ${item.product.name}")
                         if (!currentProduct.isActive || !currentProduct.isAvailable) {
                             throw InventoryValidationException("المنتج غير نشط أو غير متاح للبيع: ${currentProduct.name}")
+                        }
+                        if (kotlin.math.abs(item.unitPrice - currentProduct.price) > PRICE_EPSILON) {
+                            throw InventoryValidationException(
+                                "تغير سعر المنتج ${currentProduct.name} من ${item.unitPrice} إلى ${currentProduct.price} ريال؛ حدّث السلة ثم أعد البيع"
+                            )
                         }
 
                         // The cost stored on a cart item can be stale after supplier prices change.
