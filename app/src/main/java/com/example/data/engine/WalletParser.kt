@@ -97,11 +97,11 @@ class JawaliParser : WalletParser {
     // Some operator templates begin with "لقد استلمت" and others with
     // "استلمت"; support both actual forms without loosening the transaction fields.
     private val purchases = Pattern.compile(
-        """^(?:لقد\\s+)?استلمت\\s+(?<currency>YER|ر\\.ي)\\s+(?<amount>\\d+(?:[.,]\\d+)?)\\s+كقيمة مشتريات بمرجع\\s+(?<reference>\\d+)\\s+من\\s+(?<sender>.+)$""",
+        """^(?:لقد\s+)?استلمت\s+(?<currency>YER|ر\.ي)\s+(?<amount>\d+(?:[.,]\d+)?)\s+كقيمة مشتريات بمرجع\s+(?<reference>\d+)\s+من\s+(?<sender>.+)$""",
         Pattern.CASE_INSENSITIVE
     )
     private val directReceipt = Pattern.compile(
-        """^استلمت مبلغ\\s+(?<currency>YER|ر\\.ي)\\s+(?<amount>\\d+(?:[.,]\\d+)?)\\s+من\\s+(?<senderId>\\d+)\\s+رصيدك هو\\s+(?<balance>\\d+(?:[.,]\\d+)?)$""",
+        """^استلمت مبلغ\s+(?<currency>YER|ر\.ي)\s+(?<amount>\d+(?:[.,]\d+)?)\s+من\s+(?<senderId>\d+)\s+رصيدك هو\s+(?<balance>\d+(?:[.,]\d+)?)$""",
         Pattern.CASE_INSENSITIVE
     )
 
