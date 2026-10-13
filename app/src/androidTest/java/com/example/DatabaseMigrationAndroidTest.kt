@@ -164,10 +164,6 @@ class DatabaseMigrationAndroidTest {
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
         raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
         raw.execSQL("ALTER TABLE shifts DROP COLUMN totalCashDebtPayments")
-        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
-        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
-        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
-        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalCashDebtPayments")
         raw.execSQL(
             """
             INSERT INTO wallet_transactions (
