@@ -40,4 +40,38 @@ class PowerAiSecretStoreAndroidTest {
             db.close()
         }
     }
+
+    @Test
+    fun responseParserHandlesEscapedTextAndMultipleParts() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val engine = PowerAiEngine(db)
+            val partOne = org.json.JSONObject().put("text", "السطر الأول\nعلامة \"اقتباس\"")
+            val partTwo = org.json.JSONObject().put("text", "الجزء الثاني")
+            val response = org.json.JSONObject()
+                .put(
+                    "candidates",
+                    org.json.JSONArray().put(
+                        org.json.JSONObject().put(
+                            "content",
+                            org.json.JSONObject().put(
+                                "parts",
+                                org.json.JSONArray().put(partOne).put(partTwo)
+                            )
+                        )
+                    )
+                )
+                .toString()
+
+            assertEquals(
+                "السطر الأول\nعلامة \"اقتباس\"\nالجزء الثاني",
+                engine.parseGeminiResponse(response)
+            )
+        } finally {
+            db.close()
+        }
+    }
 }
