@@ -1,154 +1,191 @@
 package com.example.ui.admin
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 @Composable
 fun AdminBackupTab(
-    onExportSalesCsv: () -> Unit,
-    onCreateBackupJson: () -> Unit,
+    onExportSalesCsv: (Uri) -> Unit,
+    onExportInventoryCsv: (Uri) -> Unit,
+    onCreateBackup: (Uri, String) -> Unit,
+    onRestoreBackup: (Uri, String) -> Unit,
     backupStatusMessage: String?
 ) {
-    var showConfirmRestore by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var localError by remember { mutableStateOf<String?>(null) }
+    var showRestoreConfirmation by remember { mutableStateOf(false) }
+
+    val salesLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) onExportSalesCsv(uri)
+    }
+    val inventoryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) onExportInventoryCsv(uri)
+    }
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val error = validateBackupPassword(backupPassword)
+            when {
+                error != null -> localError = error
+                confirmPassword != backupPassword -> localError = "تأكيد كلمة المرور لا يطابق كلمة المرور"
+                else -> {
+                    localError = null
+                    onCreateBackup(uri, backupPassword)
+                }
+            }
+        }
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val error = validateBackupPassword(backupPassword)
+            if (error != null) {
+                localError = error
+            } else {
+                localError = null
+                onRestoreBackup(uri, backupPassword)
+            }
+        }
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Text("النسخ الاحتياطي والتصدير", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
         Text(
-            text = "نظام تصدير واستيراد البيانات والنسخ الاحتياطي",
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Text(
-            text = "يمكنك تصدير فواتير المبيعات، المخزون، الحوالات والعملاء كملفات CSV / Excel، أو إنشاء نسخة احتياطية محلية كاملة لقاعدة بيانات POS واستعادتها بأمان.",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            "تُحفظ ملفات CSV في الموقع الذي تختاره. النسخة الكاملة تشمل جداول قاعدة البيانات وتُشفّر بكلمة مرور تختارها؛ احتفظ بكلمة المرور منفصلة، فلا يمكن استعادتها عند نسيانها.",
+            style = MaterialTheme.typography.bodyMedium
         )
 
-        if (!backupStatusMessage.isNullOrEmpty()) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(backupStatusMessage, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                }
-            }
+        OutlinedButton(
+            onClick = { salesLauncher.launch("POWER_FEUL_POS_sales.csv") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("تصدير سجل المبيعات CSV")
+        }
+        OutlinedButton(
+            onClick = { inventoryLauncher.launch("POWER_FEUL_POS_inventory.csv") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("تصدير المخزون والتكاليف CSV")
         }
 
-        // Section 1: Export Data
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("أولاً: تصدير البيانات (Export)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("تصدير جداول البيانات بصيغ CSV و Excel متوافقة مع البرامج الإدارية والحسابية.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        HorizontalDivider()
+        Text("نسخة احتياطية كاملة مشفّرة", fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(
+            value = backupPassword,
+            onValueChange = { backupPassword = it; localError = null },
+            label = { Text("كلمة مرور النسخة (12 حرفًا على الأقل)") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it; localError = null },
+            label = { Text("تأكيد كلمة مرور النسخة") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = onExportSalesCsv,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("تصدير المبيعات (CSV)")
-                    }
-
-                    Button(
-                        onClick = onExportSalesCsv,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.TableChart, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("تصدير المخزون والتكاليف (CSV)")
+        Button(
+            onClick = {
+                val error = validateBackupPassword(backupPassword)
+                when {
+                    error != null -> localError = error
+                    confirmPassword != backupPassword -> localError = "تأكيد كلمة المرور لا يطابق كلمة المرور"
+                    else -> {
+                        localError = null
+                        backupLauncher.launch("POWER_FEUL_POS_backup.pfbackup")
                     }
                 }
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.Backup, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("إنشاء نسخة كاملة مشفّرة")
         }
 
-        // Section 2: Full Database Backup & Restore
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("ثانياً: النسخ الاحتياطي الكامل (Full Backup & Restore)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text("حفظ نسخة احتياطية مشفرة تشمل جميع المبيعات، المخزون، الحسابات، الموظفين، وسجلات التدقيق.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    FilledTonalButton(
-                        onClick = onCreateBackupJson,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Backup, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("إنشاء نسخة احتياطية كاملة (JSON)")
-                    }
-
-                    OutlinedButton(
-                        onClick = { showConfirmRestore = true },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Restore, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("استعادة من نسخة سابقة")
-                    }
+        OutlinedButton(
+            onClick = {
+                val error = validateBackupPassword(backupPassword)
+                if (error != null) localError = error else {
+                    localError = null
+                    showRestoreConfirmation = true
                 }
-            }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileUpload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("استعادة نسخة احتياطية")
+        }
+
+        Text(
+            "تنبيه: الاستعادة تستبدل بيانات قاعدة الكاشير الحالية ببيانات النسخة، وتُرفض إذا كان هناك شفت مفتوح أو كان مخطط قاعدة البيانات مختلفًا. لا تستخدمها أثناء البيع.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (localError != null) {
+            Text(localError!!, color = MaterialTheme.colorScheme.error)
+        }
+        if (backupStatusMessage != null) {
+            Text(backupStatusMessage, color = MaterialTheme.colorScheme.primary)
         }
     }
 
-    if (showConfirmRestore) {
+    if (showRestoreConfirmation) {
         AlertDialog(
-            onDismissRequest = { showConfirmRestore = false },
-            title = { Text("استعادة النسخة الاحتياطية", fontWeight = FontWeight.Bold) },
+            onDismissRequest = { showRestoreConfirmation = false },
+            title = { Text("تأكيد استبدال قاعدة البيانات") },
             text = {
-                Text("هل أنت متأكد من استعادة النسخة الاحتياطية؟ سيتم التحقق من سلامة وصحة الملف قبل استبدال أي بيانات.")
+                Text(
+                    "ستُستبدل بيانات المبيعات والمستخدمين والمخزون والوصفات والديون والشفتات بالبيانات الموجودة في الملف. يجب أن تكون النسخة موثوقة وأن تتطابق كلمة المرور. سيُطلب منك تسجيل الدخول مجددًا."
+                )
             },
             confirmButton = {
-                Button(
-                    onClick = { showConfirmRestore = false }
-                ) {
-                    Text("بدء الفحص والاستعادة")
-                }
+                Button(onClick = {
+                    showRestoreConfirmation = false
+                    restoreLauncher.launch(arrayOf("*/*"))
+                }) { Text("اختيار ملف الاستعادة") }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmRestore = false }) { Text("إلغاء") }
+                TextButton(onClick = { showRestoreConfirmation = false }) { Text("إلغاء") }
             }
         )
     }
+}
+
+private fun validateBackupPassword(password: String): String? = when {
+    password.length < 12 -> "استخدم كلمة مرور للنسخة الاحتياطية من 12 حرفًا على الأقل"
+    password.length > 256 -> "كلمة مرور النسخة طويلة جدًا"
+    else -> null
 }
