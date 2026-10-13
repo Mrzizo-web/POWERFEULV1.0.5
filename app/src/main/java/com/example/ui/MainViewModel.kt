@@ -312,6 +312,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private fun requirePermission(user: UserEntity, permission: AppPermission, operationName: String): Boolean {
+        if (PermissionChecker.hasPermission(user.role, permission)) return true
+        snackbarMessage.value = "ليس لديك صلاحية تنفيذ هذه العملية"
+        viewModelScope.launch(Dispatchers.IO) {
+            logUnauthorizedAttempt(user, permission, operationName)
+        }
+        return false
+    }
+
     fun navigateTo(screen: AppScreen) {
         val user = _currentUser.value ?: return
         if (screen == AppScreen.ADMIN && !PermissionChecker.hasPermission(user.role, AppPermission.VIEW_REPORTS)) {
@@ -356,6 +365,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startShift(openingCash: Double, notes: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.OPERATE_SHIFT, "فتح الشفت")) return
         viewModelScope.launch(Dispatchers.IO) {
             val res = shiftEngine.startShift(user, openingCash, notes)
             if (res is ShiftResult.Success) {
@@ -369,6 +379,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeShift(actualCash: Double, handedOverCash: Double, leftForNextShiftCash: Double, notes: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.OPERATE_SHIFT, "إغلاق الشفت")) return
         val shift = currentShift.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val res = shiftEngine.closeShift(shift.id, actualCash, handedOverCash, leftForNextShiftCash, user, notes)
@@ -383,6 +394,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun acceptHandover(actualReceivedCash: Double, notes: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.OPERATE_SHIFT, "استلام تسليم الشفت")) return
         val shift = currentShift.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val res = shiftEngine.acceptHandover(shift.id, user, actualReceivedCash, notes)
@@ -397,6 +409,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun executeSale(paymentMethod: PaymentMethod, cashReceived: Double, reference: String, customerId: String?) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.PROCESS_SALE, "تنفيذ المبيعات")) return
         val shift = currentShift.value
         val items = _cartItems.value
         if (items.isEmpty()) return
@@ -433,6 +446,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleProductActive(productId: String, isActive: Boolean) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "تغيير حالة المنتج")) return
         viewModelScope.launch(Dispatchers.IO) {
             val prod = db.productDao().getProductById(productId) ?: return@launch
             db.productDao().updateProduct(prod.copy(isActive = isActive))
@@ -445,43 +459,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addRawMaterial(name: String, unit: String, initialStock: Double, minStock: Double, costPerUnit: Double) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_INVENTORY, "إضافة مادة خام")) return
         viewModelScope.launch(Dispatchers.IO) {
-            val material = RawMaterialEntity(
-                name = name,
-                baseUnit = unit,
-                currentStock = initialStock,
-                minStock = minStock,
-                avgCostPerUnit = costPerUnit,
-                lastPurchasePrice = costPerUnit
-            )
-            db.rawMaterialDao().insertRawMaterial(material)
-            db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة مادة خام", notes = "تمت إضافة المادة الخام $name برصيد $initialStock $unit")
-            )
-            snackbarMessage.value = "تمت إضافة المادة الخام بنجاح"
+            try {
+                InventoryAdjustmentEngine(db).addRawMaterial(
+                    name = name,
+                    sku = "",
+                    baseUnit = unit,
+                    initialStock = initialStock,
+                    minStock = minStock,
+                    unitCost = costPerUnit,
+                    user = user
+                )
+                snackbarMessage.value = "تمت إضافة المادة الخام وحفظ حركتها الافتتاحية"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر إضافة المادة الخام"
+            }
         }
     }
 
     fun addRawMaterialStock(materialId: String, amount: Double, note: String = "") {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_INVENTORY, "إضافة رصيد مخزون")) return
         viewModelScope.launch(Dispatchers.IO) {
-            val mat = db.rawMaterialDao().getRawMaterialById(materialId) ?: return@launch
-            inventoryEngine.addRawMaterialStock(
-                materialId = materialId,
-                amount = amount,
-                unit = mat.baseUnit,
-                referenceId = "MANUAL_ADJUST",
-                userId = user.id,
-                userName = user.name,
-                txType = com.example.domain.model.InventoryTxType.PURCHASE,
-                note = if (note.isBlank()) "إضافة مخزون يدوية" else note
-            )
-            snackbarMessage.value = "تم تحديث رصيد المخزون بنجاح"
+            try {
+                InventoryAdjustmentEngine(db).addStock(materialId, amount, user, note)
+                snackbarMessage.value = "تم تحديث رصيد المخزون وسجل الحركة"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر تحديث رصيد المخزون"
+            }
         }
     }
 
     fun addRecipe(name: String, productId: String, items: List<RecipeItemEntity>, notes: String = "") {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_RECIPES, "إدارة الوصفات")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 com.example.data.engine.RecipeManager(db).saveRecipe(name, productId, items, notes, user)
@@ -494,6 +510,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addExpense(title: String, amount: Double, category: String, paidTo: String, notes: String = "") {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_EXPENSES, "تسجيل مصروف")) return
         recordExpenseSafely(
             title = title,
             category = category,
@@ -506,6 +524,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addPurchase(supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String = "") {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PURCHASES, "تسجيل مشتريات")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 purchaseEngine.createPurchase(
@@ -531,6 +550,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addProduct(name: String, catId: String, price: Double, cost: Double = 0.0) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "إضافة منتج")) return
+        if (name.isBlank() || !price.isFinite() || price <= 0.0 || !cost.isFinite() || cost < 0.0) {
+            snackbarMessage.value = "اسم المنتج والسعر والتكلفة يجب أن تكون بيانات صالحة"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val prod = ProductEntity(
                 name = name,
@@ -548,6 +572,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateProductPrice(productId: String, newPrice: Double) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "تعديل سعر المنتج")) return
+        if (!newPrice.isFinite() || newPrice < 0.0) {
+            snackbarMessage.value = "السعر الجديد غير صالح"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val prod = db.productDao().getProductById(productId)
             if (prod != null) {
@@ -562,6 +591,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleProductAvailable(productId: String, isAvailable: Boolean) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "تغيير إتاحة المنتج")) return
         viewModelScope.launch(Dispatchers.IO) {
             val prod = db.productDao().getProductById(productId)
             if (prod != null) {
@@ -573,23 +603,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addRawMaterial(name: String, sku: String, baseUnit: String, minStock: Double, price: Double) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_INVENTORY, "إضافة مادة خام")) return
         viewModelScope.launch(Dispatchers.IO) {
-            val mat = RawMaterialEntity(
-                name = name,
-                sku = sku,
-                baseUnit = baseUnit,
-                minStock = minStock,
-                avgCostPerUnit = price,
-                lastPurchasePrice = price,
-                currentStock = 0.0
-            )
-            db.rawMaterialDao().insertRawMaterial(mat)
-            snackbarMessage.value = "تمت إضافة المادة الخام بنجاح"
+            try {
+                InventoryAdjustmentEngine(db).addRawMaterial(
+                    name = name,
+                    sku = sku,
+                    baseUnit = baseUnit,
+                    initialStock = 0.0,
+                    minStock = minStock,
+                    unitCost = price,
+                    user = user
+                )
+                snackbarMessage.value = "تمت إضافة المادة الخام بنجاح"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر إضافة المادة الخام"
+            }
         }
     }
 
     fun addCustomer(name: String, phone: String, creditLimit: Double, allowDebt: Boolean) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_CUSTOMERS, "إضافة عميل")) return
+        if (name.isBlank() || !creditLimit.isFinite() || creditLimit < 0.0) {
+            snackbarMessage.value = "بيانات العميل أو السقف الائتماني غير صالحة"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             val cust = CustomerEntity(
                 name = name,
@@ -731,6 +772,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         notes: String
     ) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_EXPENSES, "تسجيل مصروف")) return
         val shiftId = currentShift.value?.id.orEmpty()
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -755,6 +797,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createPurchase(supplierId: String, supplierName: String, invoiceNo: String, materialId: String, qty: Double, unit: String, unitPrice: Double) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PURCHASES, "تسجيل فاتورة شراء")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val material = db.rawMaterialDao().getRawMaterialById(materialId)
@@ -788,85 +831,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun recordDebtPayment(customerId: String, amount: Double, isCash: Boolean, notes: String) {
         val user = _currentUser.value ?: return
-        val shift = currentShift.value
+        if (!requirePermission(user, AppPermission.RECORD_DEBT_PAYMENT, "سداد دين")) return
+        val shiftId = currentShift.value?.id.orEmpty()
         viewModelScope.launch(Dispatchers.IO) {
-            val cust = db.customerDao().getCustomerById(customerId) ?: return@launch
-            val tx = DebtTransactionEntity(
-                customerId = customerId,
-                customerName = cust.name,
-                userId = user.id,
-                userName = user.name,
-                type = "PAYMENT",
-                amount = amount,
-                balanceAfter = (cust.currentDebt - amount).coerceAtLeast(0.0),
-                notes = notes
-            )
-            db.debtTransactionDao().insertDebtTransaction(tx)
-            db.customerDao().updateDebt(customerId, (cust.currentDebt - amount).coerceAtLeast(0.0), CustomerStatus.ACTIVE)
-            if (shift != null && isCash) {
-                db.shiftDao().insertCashMovement(
-                    ShiftCashMovementEntity(
-                        shiftId = shift.id,
-                        type = "PAYOUT",
-                        amount = amount,
-                        notes = "سداد دين: ${cust.name}"
-                    )
+            try {
+                DebtEngine(db).payDebt(
+                    customerId = customerId,
+                    amount = amount,
+                    paymentMethod = if (isCash) PaymentMethod.CASH else PaymentMethod.E_WALLET,
+                    shiftId = shiftId,
+                    user = user,
+                    notes = notes
                 )
+                snackbarMessage.value = "تم تسجيل سداد الدين وتحديث الرصيد والنقدية ذريًا"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر تسجيل سداد الدين"
             }
-            snackbarMessage.value = "تم تسجيل سداد الدين بنجاح"
         }
     }
 
     fun recordWaste(materialId: String, qty: Double, unit: String, reason: String, notes: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.RECORD_WASTE, "تسجيل الهدر")) return
+        val wasteReason = when (reason.uppercase()) {
+            "EXPIRED" -> WasteReason.EXPIRED
+            "DAMAGED" -> WasteReason.DAMAGED
+            "SPOILED" -> WasteReason.SPOILED
+            else -> WasteReason.OTHER
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            val mat = db.rawMaterialDao().getRawMaterialById(materialId)
-            val wasteReason = when (reason) {
-                "EXPIRED" -> WasteReason.EXPIRED
-                "DAMAGED" -> WasteReason.DAMAGED
-                else -> WasteReason.OTHER
+            try {
+                InventoryAdjustmentEngine(db).recordWaste(
+                    materialId = materialId,
+                    quantity = qty,
+                    unit = unit,
+                    reason = wasteReason,
+                    notes = notes,
+                    user = user
+                )
+                snackbarMessage.value = "تم تسجيل الهدر وخصم الكمية من المخزون وسجل الحركات"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر تسجيل الهدر"
             }
-            val waste = WasteTransactionEntity(
-                rawMaterialId = materialId,
-                rawMaterialName = mat?.name ?: "",
-                quantity = qty,
-                unit = unit,
-                estimatedCost = (mat?.avgCostPerUnit ?: 0.0) * qty,
-                reason = wasteReason,
-                notes = notes,
-                userId = user.id,
-                userName = user.name
-            )
-            db.wasteDao().insertWaste(waste)
-            snackbarMessage.value = "تم تسجيل الهدر وتحديث المخزون"
         }
     }
 
     fun applyStockAdjustment(materialId: String, actualStock: Double, reason: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.ADJUST_STOCK, "تسوية جردية")) return
         viewModelScope.launch(Dispatchers.IO) {
-            val mat = db.rawMaterialDao().getRawMaterialById(materialId) ?: return@launch
-            val diff = actualStock - mat.currentStock
-            db.rawMaterialDao().updateRawMaterial(mat.copy(currentStock = actualStock))
-            val adj = StockAdjustmentEntity(
-                stockCountId = "",
-                rawMaterialId = materialId,
-                rawMaterialName = mat.name,
-                systemStock = mat.currentStock,
-                actualStock = actualStock,
-                discrepancy = diff,
-                unit = mat.baseUnit,
-                reason = reason,
-                userId = user.id,
-                userName = user.name
-            )
-            db.stockAdjustmentDao().insertStockAdjustment(adj)
-            snackbarMessage.value = "تمت تسوية رصيد المخزون"
+            try {
+                InventoryAdjustmentEngine(db).applyStockAdjustment(materialId, actualStock, reason, user)
+                snackbarMessage.value = "تمت التسوية وتسجيل أثرها في حركات المخزون"
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                snackbarMessage.value = error.message ?: "تعذر تنفيذ التسوية الجردية"
+            }
         }
     }
 
     fun voidSale(saleId: String, reason: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.VOID_SALE, "إلغاء فاتورة")) return
         viewModelScope.launch(Dispatchers.IO) {
             val res = salesEngine.voidSale(saleId, reason, user)
             if (res.isSuccess) {
@@ -904,6 +935,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateWalletTransactionStatus(txId: String, newStatus: WalletTransferStatus, reason: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تعديل حالة حوالة")) return
         viewModelScope.launch(Dispatchers.IO) {
             walletMatchingEngine.updateTransactionStatus(txId, newStatus, reason, user.id, user.name, user.role.name)
             snackbarMessage.value = "تم تحديث حالة الحوالة بنجاح"
@@ -930,6 +962,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reassignShift(txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.REASSIGN_TRANSFER, "إعادة إسناد حوالة")) return
         viewModelScope.launch(Dispatchers.IO) {
             val res = walletMatchingEngine.reassignShift(
                 txId = txId,
@@ -950,6 +983,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleGatewayServer() {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تشغيل Gateway")) return
         if (com.example.gateway.GatewayService.isServerRunning) {
             com.example.gateway.GatewayService.stopGateway(getApplication())
             snackbarMessage.value = "أُرسل طلب إيقاف خادم Gateway"
@@ -984,6 +1019,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveGeminiApiKey(key: String) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تغيير مفتاح AI")) return
         viewModelScope.launch(Dispatchers.IO) {
             powerAiEngine.saveGeminiApiKey(key)
             snackbarMessage.value = "تم حفظ مفتاح Gemini API بنجاح"
@@ -991,6 +1028,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun saveSystemSetting(key: String, value: String) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تعديل إعدادات النظام")) return
         viewModelScope.launch(Dispatchers.IO) {
             if (key == "auto_lock_minutes") {
                 val minutes = value.trim().toIntOrNull()
@@ -1022,11 +1061,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) { snackbarMessage.value = "تم حفظ الإعداد بنجاح" }
         }
     }
-    suspend fun getSystemSetting(key: String): String? = withContext(Dispatchers.IO) {
+    suspend fun getSystemSetting(key: String): String? {
+        val user = _currentUser.value ?: return null
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_SETTINGS)) {
+            withContext(Dispatchers.IO) { logUnauthorizedAttempt(user, AppPermission.MANAGE_SETTINGS, "قراءة إعدادات النظام") }
+            return null
+        }
+        return withContext(Dispatchers.IO) {
         if (key == "gateway_token") {
             com.example.gateway.GatewaySecretStore(getApplication()).getToken()
         } else {
             db.settingsDao().getSetting(key)
+        }
         }
     }
 
