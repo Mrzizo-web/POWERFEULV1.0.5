@@ -186,7 +186,7 @@ class BackupRestoreEngine(
                             if (
                                 schema.name.equals("settings", ignoreCase = true) &&
                                 i == secretValueIndex &&
-                                settingKey in DEVICE_BOUND_SECRETS
+                                isDeviceBoundSecretKey(settingKey)
                             ) {
                                 // This credential belongs to this device; never export it,
                                 // even inside the encrypted backup.
