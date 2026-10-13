@@ -171,8 +171,33 @@ class GatewaySyncEngine(
         )
     }
 
+    private fun isLocalNetworkHost(host: String): Boolean {
+        val normalized = host.trim().removePrefix("[").removeSuffix("]").lowercase()
+        if (normalized == "localhost" || normalized.endsWith(".localhost") ||
+            normalized == "::1" || normalized.startsWith("127.")
+        ) return true
+
+        val octets = normalized.split(".").map { it.toIntOrNull() ?: return false }
+        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
+        val a = octets[0]
+        val b = octets[1]
+        return a == 10 ||
+            (a == 192 && b == 168) ||
+            (a == 172 && b in 16..31) ||
+            (a == 169 && b == 254) ||
+            a == 127
+    }
+
     private fun sendHttpRequest(targetUrl: String, body: String): Boolean {
         val url = URL(targetUrl)
+        require(url.protocol.equals("https", ignoreCase = true) ||
+            url.protocol.equals("http", ignoreCase = true)
+        ) { "Unsupported Gateway endpoint protocol" }
+        if (url.protocol.equals("http", ignoreCase = true)) {
+            require(isLocalNetworkHost(url.host)) {
+                "Cleartext Gateway requests are restricted to a local/private network host"
+            }
+        }
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 4000
