@@ -9,6 +9,22 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE isActive = 1 ORDER BY name ASC")
     fun getAllActiveUsers(): Flow<List<UserEntity>>
 
+    /**
+     * Login-only recovery list: show the known owner when no account is active,
+     * but only if a real salted credential exists to authenticate before activation.
+     * Do not include disabled cashiers/admins or an owner whose PIN is unconfigured.
+     */
+    @Query("""
+        SELECT * FROM users
+        WHERE isActive = 1 OR (
+            id = :ownerId AND role = 'OWNER'
+            AND length(trim(pinHash)) > 0 AND length(trim(pinSalt)) > 0
+            AND NOT EXISTS (SELECT 1 FROM users WHERE isActive = 1)
+        )
+        ORDER BY name ASC
+    """)
+    fun getLoginUsers(ownerId: String): Flow<List<UserEntity>>
+
     @Query("SELECT * FROM users ORDER BY name ASC")
     fun getAllUsers(): Flow<List<UserEntity>>
 
