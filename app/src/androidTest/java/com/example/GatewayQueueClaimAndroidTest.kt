@@ -147,4 +147,34 @@ class GatewayQueueClaimAndroidTest {
         }
     }
 
+    @Test
+    fun publicCleartextEndpointIsRejectedBeforeNetworkTransmission() = runBlocking {
+        val dao = db.gatewayQueueDao()
+        dao.insertItem(
+            GatewayQueueEntity(
+                id = "public-cleartext-host",
+                type = "OUTGOING_SYNC",
+                payload = "{}",
+                targetEndpoint = "http://203.0.113.10:8080/api/sms/ingest",
+                maxRetries = 1,
+                nextAttemptAt = 0L
+            )
+        )
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val engine = com.example.data.engine.GatewaySyncEngine(
+            db,
+            scope,
+            autoStartRetry = false
+        )
+        try {
+            engine.retryAllNow()
+            val stored = dao.getAllQueueItems().first().single()
+            assertEquals("FAILED", stored.status)
+            assertTrue(stored.errorMessage.contains("local/private network host"))
+        } finally {
+            engine.stopPeriodicRetryLoop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
 }
