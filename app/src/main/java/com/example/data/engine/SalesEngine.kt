@@ -19,6 +19,7 @@ class SalesEngine(
     private val customerDao = db.customerDao()
     private val debtTransactionDao = db.debtTransactionDao()
     private val auditLogDao = db.auditLogDao()
+    private val costEngine = CostEngine(db.rawMaterialDao(), db.recipeDao(), db.mixtureDao())
 
     suspend fun executeSale(
         shift: ShiftEntity,
@@ -37,8 +38,7 @@ class SalesEngine(
         }
         if (items.any {
                 !it.unitPrice.isFinite() || it.unitPrice < 0.0 ||
-                    !it.totalPrice.isFinite() || it.totalPrice < 0.0 ||
-                    !it.product.costPrice.isFinite() || it.product.costPrice < 0.0
+                    !it.totalPrice.isFinite() || it.totalPrice < 0.0
             }
         ) {
             return SaleResult.Error("توجد أسعار أو تكاليف غير صالحة في السلة")
@@ -96,12 +96,43 @@ class SalesEngine(
                     if (openShift.status != com.example.domain.model.ShiftStatus.OPEN) {
                         throw InventoryValidationException("لا يمكن البيع على شفت مغلق")
                     }
+                    val currentProducts = linkedMapOf<String, ProductEntity>()
+                    val currentUnitCosts = linkedMapOf<String, Double>()
                     for (item in items) {
                         val currentProduct = db.productDao().getProductById(item.product.id)
                             ?: throw InventoryValidationException("المنتج لم يعد موجودًا: ${item.product.name}")
                         if (!currentProduct.isActive || !currentProduct.isAvailable) {
                             throw InventoryValidationException("المنتج غير نشط أو غير متاح للبيع: ${currentProduct.name}")
                         }
+
+                        // The cost stored on a cart item can be stale after supplier prices change.
+                        // Recalculate the active recipe from current raw-material costs inside
+                        // the sale transaction, then snapshot that cost into this sale only.
+                        val activeRecipe = db.recipeDao().getActiveRecipeForProductSync(currentProduct.id)
+                        val currentUnitCost = if (activeRecipe != null) {
+                            val recalculated = costEngine.calculateRecipeTotalCost(activeRecipe.id)
+                            if (activeRecipe.calculatedCost != recalculated) {
+                                db.recipeDao().updateRecipe(activeRecipe.copy(calculatedCost = recalculated))
+                            }
+                            recalculated
+                        } else {
+                            currentProduct.costPrice
+                        }
+                        if (!currentUnitCost.isFinite() || currentUnitCost < 0.0) {
+                            throw InventoryValidationException("تكلفة المنتج غير صالحة: ${currentProduct.name}")
+                        }
+                        if (currentProduct.costPrice != currentUnitCost) {
+                            db.productDao().updateProduct(currentProduct.copy(costPrice = currentUnitCost))
+                        }
+                        currentProducts[currentProduct.id] = currentProduct.copy(costPrice = currentUnitCost)
+                        currentUnitCosts[currentProduct.id] = currentUnitCost
+                    }
+                    val currentTotalCost = items.sumOf { item ->
+                        (currentUnitCosts[item.product.id]
+                            ?: throw InventoryValidationException("تعذر حساب تكلفة المنتج: ${item.product.name}")) * item.quantity
+                    }
+                    if (!currentTotalCost.isFinite() || currentTotalCost < 0.0) {
+                        throw InventoryValidationException("إجمالي تكلفة الفاتورة غير صالح")
                     }
                     if (paymentMethod == PaymentMethod.DEBT) {
                         val refreshedCustomer = selectedCustomerId?.let { customerDao.getCustomerById(it) }
@@ -133,22 +164,24 @@ class SalesEngine(
                         paymentReference = effectivePaymentReference,
                         cashReceived = cashReceived,
                         cashChange = cashChange,
-                        totalCost = items.sumOf { it.product.costPrice * it.quantity },
+                        totalCost = currentTotalCost,
                         notes = notes
                     )
                     saleEntity = saleRecord
                     saleDao.insertSale(saleRecord)
 
                     val saleItems = items.map { item ->
+                        val unitCost = currentUnitCosts.getValue(item.product.id)
+                        val currentProduct = currentProducts.getValue(item.product.id)
                         SaleItemEntity(
                             saleId = saleId,
-                            productId = item.product.id,
-                            productName = item.product.name,
+                            productId = currentProduct.id,
+                            productName = currentProduct.name,
                             quantity = item.quantity,
                             unitPrice = item.unitPrice,
                             totalPrice = item.totalPrice,
-                            unitCost = item.product.costPrice,
-                            totalCost = item.product.costPrice * item.quantity
+                            unitCost = unitCost,
+                            totalCost = unitCost * item.quantity
                         )
                     }
                     saleDao.insertSaleItems(saleItems)
