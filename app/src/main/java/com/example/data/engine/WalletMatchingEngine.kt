@@ -122,6 +122,7 @@ class WalletMatchingEngine(private val db: AppDatabase) {
             ?.let { walletDao.findTransactionByTxId(parsed.walletCode, it) }
 
         if (existingTx != null) {
+            val amountConflict = kotlin.math.abs(existingTx.amount - parsed.amount) > 0.01
             val sms = WalletSmsEntity(
                 id = smsId,
                 walletCode = parsed.walletCode,
@@ -131,8 +132,8 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                 parsedAmount = parsed.amount,
                 parsedTransactionId = parsed.transactionId,
                 parsedSender = parsed.sender,
-                processingStatus = SmsProcessingStatus.DUPLICATE,
-                matchedTransactionId = existingTx.id
+                processingStatus = if (amountConflict) SmsProcessingStatus.UNMATCHED else SmsProcessingStatus.DUPLICATE,
+                matchedTransactionId = if (amountConflict) null else existingTx.id
             )
             db.withTransaction {
                 walletDao.insertSms(sms)
@@ -141,15 +142,24 @@ class WalletMatchingEngine(private val db: AppDatabase) {
                         userId = "SYSTEM",
                         userName = "SMS Gateway",
                         userRole = "SYSTEM",
-                        action = "DUPLICATE_SMS_DETECTED",
+                        action = if (amountConflict) "WALLET_REFERENCE_CONFLICT" else "DUPLICATE_SMS_DETECTED",
                         entityType = "WALLET_TX",
                         entityId = existingTx.id,
-                        newValue = "${parsed.amount} ريال (${parsed.transactionId})",
-                        notes = "تم اكتشاف التكرار بواسطة رقم المرجع/المعاملة"
+                        previousValue = existingTx.amount.toString(),
+                        newValue = parsed.amount.toString(),
+                        notes = if (amountConflict) {
+                            "رقم المعاملة نفسه وصل بمبلغ مختلف؛ حُفظت الرسالة للمراجعة ولم تُنشأ معاملة مالية إضافية"
+                        } else {
+                            "تم اكتشاف التكرار بواسطة رقم المرجع/المعاملة والمبلغ متطابق"
+                        }
                     )
                 )
             }
-            return IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس رقم المرجع ${existingTx.transactionId}")
+            return if (amountConflict) {
+                IngestResult.Unmatched(sms)
+            } else {
+                IngestResult.Duplicate(existingTx, "رسالة مكررة لنفس رقم المرجع ${existingTx.transactionId}")
+            }
         }
 
         // Critical: resolve the shift from the SMS arrival time, not processing time.

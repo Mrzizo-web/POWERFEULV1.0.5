@@ -13,6 +13,7 @@ import com.example.domain.model.ShiftStatus
 import com.example.domain.model.UserRole
 import com.example.domain.model.WalletTransferStatus
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -206,6 +207,36 @@ class WalletShiftIntegrationTest {
         assertTrue(results.second is IngestResult.Unmatched)
         assertEquals(1, db.walletDao().getAllSmsSync().size)
         assertTrue(db.walletDao().getAllTransactionsSync().isEmpty())
+    }
+
+    @Test
+    fun reusedWalletReferenceWithDifferentAmountIsHeldForReview() = runBlocking {
+        val engine = WalletMatchingEngine(db)
+        val first = engine.ingestSms(
+            sender = "Jawali",
+            body = "لقد استلمت YER 16000 كقيمة مشتريات بمرجع 468486397181 من عميد محمد احمد احمد",
+            receivedAt = 5_000L,
+            sourceSmsId = "jawali-reference-original"
+        )
+        assertTrue(first is IngestResult.Created)
+
+        val conflict = engine.ingestSms(
+            sender = "Jawali",
+            body = "لقد استلمت YER 17000 كقيمة مشتريات بمرجع 468486397181 من عميد محمد احمد احمد",
+            receivedAt = 6_000L,
+            sourceSmsId = "jawali-reference-conflict"
+        )
+        assertTrue("Conflicting amount must require manual review, not be auto-credited", conflict is IngestResult.Unmatched)
+        val transactions = db.walletDao().getAllTransactionsSync()
+        assertEquals(1, transactions.size)
+        assertEquals(16_000.0, transactions.single().amount, 0.001)
+
+        val conflictSms = db.walletDao().getSmsById("jawali-reference-conflict")!!
+        assertEquals(com.example.domain.model.SmsProcessingStatus.UNMATCHED, conflictSms.processingStatus)
+        assertEquals(null, conflictSms.matchedTransactionId)
+
+        val logs = db.auditLogDao().getRecentLogs().first()
+        assertTrue(logs.any { it.action == "WALLET_REFERENCE_CONFLICT" })
     }
 
 }
