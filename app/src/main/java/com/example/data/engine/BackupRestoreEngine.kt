@@ -61,7 +61,7 @@ class BackupRestoreEngine(
     suspend fun exportInventoryCsv(): String = withContext(Dispatchers.IO) {
         val materials = db.rawMaterialDao().getAllRawMaterialsSync()
         val sb = StringBuilder()
-        sb.append("SKU,المادة الخام,الوحدة,الرصيد,حد التنبيه,تكلفة الوحدة,آخر سعر شراء\n")
+        sb.append("SKU,المادة الخام,الوحدة,الرصيد,حد التنبيه,تكلفة الوحدة,آخر سعر شراء,الحالة\n")
         for (material in materials) {
             val status = when {
                 material.currentStock <= 0.0 -> "نافد"
@@ -150,7 +150,11 @@ class BackupRestoreEngine(
                 .put("tableCount", tables.size)
                 .put("tables", tableArray)
         }
-        encryptPayload(snapshot.toString().toByteArray(Charsets.UTF_8), password)
+        val plaintext = snapshot.toString().toByteArray(Charsets.UTF_8)
+        require(plaintext.size <= MAX_BACKUP_BYTES) { "حجم قاعدة البيانات أكبر من الحد المسموح للنسخ الاحتياطي" }
+        val encrypted = encryptPayload(plaintext, password)
+        require(encrypted.size <= MAX_BACKUP_BYTES) { "حجم ملف النسخة المشفر يتجاوز الحد المسموح" }
+        encrypted
     }
 
     /**
@@ -312,7 +316,7 @@ class BackupRestoreEngine(
         sqlDb.query(
             "SELECT name FROM sqlite_master WHERE type='table' " +
                 "AND name NOT LIKE 'sqlite_%' " +
-                "AND name NOT IN ('android_metadata', 'room_master_table') ORDER BY name"
+                "AND name NOT IN ('android_metadata', 'room_master_table', 'room_table_modification_log') ORDER BY name"
         ).use { cursor ->
             while (cursor.moveToNext()) {
                 val name = cursor.getString(0)
