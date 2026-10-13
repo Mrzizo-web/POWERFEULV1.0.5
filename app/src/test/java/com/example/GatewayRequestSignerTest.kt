@@ -8,6 +8,22 @@ class GatewayRequestSignerTest {
     private val token = "0123456789abcdef0123456789abcdef"
 
     @Test
+    fun signatureMatchesSharedPhoneGatewayProtocolVector() {
+        val key = "0123456789abcdef0123456789abcdef"
+        val body = """{"sender":"FLOOSAK","body":"استلمت حوالة","receivedAt":1700000000000}"""
+        val signature = GatewayRequestSigner.sign(
+            key,
+            "POST",
+            "/api/sms/ingest",
+            "1700000000000",
+            "event-123",
+            "GW-01",
+            body
+        )
+        assertEquals("016638c88f520f5e14fdbd0f991ff5f4d7713c7e9ab2dc8a70007bff982bc4e1", signature)
+    }
+
+    @Test
     fun signatureVerifiesForExactRequest() {
         val method = "POST"
         val path = "/api/sms/ingest"
