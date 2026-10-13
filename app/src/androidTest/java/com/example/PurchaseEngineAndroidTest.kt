@@ -192,4 +192,50 @@ class PurchaseEngineAndroidTest {
     }
 
 
+    @Test
+    fun oneInvoiceCanPurchaseMultipleMaterialsAndUpdatesBothStocksAtomically() = runBlocking {
+        db.rawMaterialDao().insertRawMaterial(
+            RawMaterialEntity(
+                id = "material-milk",
+                name = "حليب",
+                baseUnit = "ml",
+                currentStock = 1000.0,
+                avgCostPerUnit = 0.2,
+                lastPurchasePrice = 0.2
+            )
+        )
+
+        val purchaseId = engine.createPurchase(
+            supplierId = "supplier-1",
+            supplierName = "مورد الاختبار",
+            invoiceNumber = "INV-MULTI-LINE",
+            items = listOf(
+                NewPurchaseItem("material-1", "شوفان", 500.0, "g", 2.0),
+                NewPurchaseItem("material-milk", "حليب", 300.0, "ml", 0.5)
+            ),
+            user = user,
+            notes = "اختبار فاتورة بمواد متعددة"
+        )
+
+        val purchase = db.purchaseDao().getPurchaseById(purchaseId)!!
+        assertEquals(1150.0, purchase.totalAmount, 0.001)
+        val lines = db.purchaseDao().getPurchaseItems(purchaseId).first()
+        assertEquals(2, lines.size)
+        assertEquals(setOf("material-1", "material-milk"), lines.map { it.rawMaterialId }.toSet())
+
+        val oats = db.rawMaterialDao().getRawMaterialById("material-1")!!
+        val milk = db.rawMaterialDao().getRawMaterialById("material-milk")!!
+        assertEquals(1500.0, oats.currentStock, 0.001)
+        assertEquals(1300.0, milk.currentStock, 0.001)
+        assertEquals(0.5, oats.avgCostPerUnit, 0.001)
+        assertEquals((1000.0 * 0.2 + 300.0 * 0.5) / 1300.0, milk.avgCostPerUnit, 0.001)
+
+        val movements = db.inventoryTransactionDao().getTransactionsByReference(purchaseId)
+        assertEquals(2, movements.size)
+        assertEquals(setOf("material-1", "material-milk"), movements.map { it.rawMaterialId }.toSet())
+        assertTrue(db.auditLogDao().getRecentLogs().first().any {
+            it.action == "PURCHASE_CREATED" && it.entityId == purchaseId
+        })
+    }
+
 }
