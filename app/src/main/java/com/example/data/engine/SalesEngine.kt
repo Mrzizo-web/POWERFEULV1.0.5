@@ -5,6 +5,9 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.entity.*
 import com.example.domain.model.CustomerStatus
 import com.example.domain.model.PaymentMethod
+import com.example.domain.model.UserRole
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -32,6 +35,9 @@ class SalesEngine(
         discountAmount: Double = 0.0,
         notes: String = ""
     ): SaleResult {
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.PROCESS_SALE)) {
+            return SaleResult.Error("ليس لديك صلاحية تنفيذ المبيعات")
+        }
         if (items.isEmpty()) return SaleResult.Error("السلة فارغة")
         if (items.any { it.quantity <= 0 }) {
             return SaleResult.Error("كمية أي منتج يجب أن تكون أكبر من صفر")
@@ -95,6 +101,9 @@ class SalesEngine(
                         ?: throw InventoryValidationException("الشفت غير موجود")
                     if (openShift.status != com.example.domain.model.ShiftStatus.OPEN) {
                         throw InventoryValidationException("لا يمكن البيع على شفت مغلق")
+                    }
+                    if (openShift.userId != user.id && user.role !in setOf(UserRole.OWNER, UserRole.ADMIN)) {
+                        throw InventoryValidationException("لا يمكن تنفيذ مبيعات على شفت مستخدم آخر")
                     }
                     val currentProducts = linkedMapOf<String, ProductEntity>()
                     val currentUnitCosts = linkedMapOf<String, Double>()
@@ -262,6 +271,12 @@ class SalesEngine(
         reason: String,
         user: UserEntity
     ): Result<SaleEntity> {
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.VOID_SALE)) {
+            return Result.failure(SecurityException("ليس لديك صلاحية إلغاء الفواتير"))
+        }
+        if (reason.isBlank()) {
+            return Result.failure(IllegalArgumentException("سبب إلغاء الفاتورة مطلوب"))
+        }
         return try {
             db.withTransaction {
                 val sale = saleDao.getSaleById(saleId)
@@ -284,10 +299,22 @@ class SalesEngine(
                 val shift = shiftDao.getShiftById(sale.shiftId)
                 if (shift != null) {
                     val reversedShift = when (sale.paymentMethod) {
-                        PaymentMethod.CASH -> shift.copy(
-                            totalCashSales = (shift.totalCashSales - sale.netAmount).coerceAtLeast(0.0),
-                            expectedCash = (shift.expectedCash - sale.netAmount).coerceAtLeast(0.0)
-                        )
+                        PaymentMethod.CASH -> {
+                            val remainingCashSales = shift.totalCashSales - sale.netAmount
+                            val revisedExpectedCash = shift.expectedCash - sale.netAmount
+                            if (remainingCashSales < -0.01 || revisedExpectedCash < -0.01) {
+                                throw IllegalStateException("تعذر عكس الفاتورة: مجاميع النقدية لا تطابق سجل الفاتورة")
+                            }
+                            shift.copy(
+                                totalCashSales = remainingCashSales.coerceAtLeast(0.0),
+                                expectedCash = revisedExpectedCash.coerceAtLeast(0.0),
+                                discrepancyAmount = if (shift.status == com.example.domain.model.ShiftStatus.OPEN) {
+                                    shift.discrepancyAmount
+                                } else {
+                                    shift.actualCash - revisedExpectedCash.coerceAtLeast(0.0)
+                                }
+                            )
+                        }
                         PaymentMethod.E_WALLET -> shift.copy(
                             totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0)
                         )

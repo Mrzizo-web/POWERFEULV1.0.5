@@ -8,6 +8,8 @@ import com.example.data.local.entity.ShiftCashMovementEntity
 import com.example.data.local.entity.UserEntity
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.ShiftStatus
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 
 class ExpenseValidationException(message: String) : IllegalArgumentException(message)
 
@@ -23,6 +25,9 @@ class ExpenseEngine(private val db: AppDatabase) {
         shiftId: String,
         user: UserEntity
     ): ExpenseEntity = db.withTransaction {
+        check(PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_EXPENSES)) {
+            "ليس لديك صلاحية إدارة المصروفات"
+        }
         require(title.isNotBlank()) { "عنوان المصروف مطلوب" }
         require(category.isNotBlank()) { "تصنيف المصروف مطلوب" }
         if (!amount.isFinite() || amount <= 0.0) {

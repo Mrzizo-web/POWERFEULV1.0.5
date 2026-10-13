@@ -7,6 +7,9 @@ import com.example.data.local.entity.ShiftEntity
 import com.example.data.local.entity.ShiftHandoverEntity
 import com.example.data.local.entity.UserEntity
 import com.example.domain.model.ShiftStatus
+import com.example.domain.model.UserRole
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 
 class ShiftEngine(private val db: AppDatabase) {
     private companion object {
@@ -21,6 +24,9 @@ class ShiftEngine(private val db: AppDatabase) {
         openingCash: Double,
         notes: String = ""
     ): ShiftResult = db.withTransaction {
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.OPERATE_SHIFT)) {
+            return@withTransaction ShiftResult.Error("ليس لديك صلاحية فتح الشفت")
+        }
         startShiftInternal(user, openingCash, notes)
     }
 
@@ -76,6 +82,12 @@ class ShiftEngine(private val db: AppDatabase) {
     ): ShiftResult = db.withTransaction {
         val shift = shiftDao.getShiftById(shiftId)
             ?: return@withTransaction ShiftResult.Error("الشفت غير موجود")
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.OPERATE_SHIFT)) {
+            return@withTransaction ShiftResult.Error("ليس لديك صلاحية إغلاق الشفت")
+        }
+        if (shift.userId != user.id && user.role !in setOf(UserRole.OWNER, UserRole.ADMIN)) {
+            return@withTransaction ShiftResult.Error("لا يمكنك إغلاق شفت مستخدم آخر")
+        }
         if (shift.status != ShiftStatus.OPEN) {
             return@withTransaction ShiftResult.Error("تم إغلاق هذا الشفت مسبقًا")
         }
@@ -129,6 +141,9 @@ class ShiftEngine(private val db: AppDatabase) {
         actualReceived: Double,
         notes: String = ""
     ): ShiftResult = db.withTransaction {
+        if (!PermissionChecker.hasPermission(currentUser.role, AppPermission.OPERATE_SHIFT)) {
+            return@withTransaction ShiftResult.Error("ليس لديك صلاحية استلام تسليم الشفت")
+        }
         if (!actualReceived.isFinite() || actualReceived < 0.0) {
             return@withTransaction ShiftResult.Error("النقدية المستلمة يجب أن تكون قيمة غير سالبة وصالحة")
         }

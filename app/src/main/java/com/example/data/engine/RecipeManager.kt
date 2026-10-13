@@ -6,6 +6,8 @@ import com.example.data.local.entity.AuditLogEntity
 import com.example.data.local.entity.RecipeEntity
 import com.example.data.local.entity.RecipeItemEntity
 import com.example.data.local.entity.UserEntity
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 
 /**
  * Saves a complete recipe and its active product binding as one Room transaction.
@@ -19,6 +21,9 @@ class RecipeManager(private val db: AppDatabase) {
         notes: String,
         user: UserEntity
     ): RecipeEntity = db.withTransaction {
+        check(PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_RECIPES)) {
+            "ليس لديك صلاحية إدارة الوصفات"
+        }
         require(name.isNotBlank()) { "اسم الوصفة مطلوب" }
         require(productId.isNotBlank()) { "يجب اختيار منتج للوصفة" }
         require(items.isNotEmpty()) { "يجب إضافة مكوّن واحد على الأقل" }

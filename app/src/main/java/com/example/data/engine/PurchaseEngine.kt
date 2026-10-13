@@ -7,6 +7,8 @@ import com.example.data.local.entity.PurchaseEntity
 import com.example.data.local.entity.PurchaseItemEntity
 import com.example.data.local.entity.UserEntity
 import com.example.domain.model.InventoryTxType
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 import java.util.UUID
 
 class PurchaseEngine(
@@ -34,6 +36,9 @@ class PurchaseEngine(
         user: UserEntity,
         notes: String = ""
     ): String = db.withTransaction {
+        check(PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_PURCHASES)) {
+            "ليس لديك صلاحية إدارة المشتريات"
+        }
         require(supplierId.isNotBlank()) { "يجب اختيار المورد" }
         require(supplierName.isNotBlank()) { "اسم المورد مطلوب" }
         require(invoiceNumber.isNotBlank()) { "رقم فاتورة المورد مطلوب" }
