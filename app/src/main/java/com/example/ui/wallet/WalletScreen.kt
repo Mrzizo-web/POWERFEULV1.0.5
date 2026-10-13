@@ -57,25 +57,33 @@ fun WalletScreen(
     // Dialog state for details
     var viewingTx by remember { mutableStateOf<WalletTransactionEntity?>(null) }
 
-    // Filter transactions based on permission:
-    // Cashier ONLY sees current shift!
-    val visibleTransactions = remember(transactions, currentShift, canViewAll, selectedWalletFilter, selectedStatusFilter, searchQuery) {
-        transactions.filter { tx ->
-            val matchesShift = if (canViewAll) true else (tx.shiftId == currentShift?.id)
+    // Scope data before applying search/status filters. A cashier with no open
+    // shift must see no wallet history (including rows with a null shiftId).
+    // Cashiers are limited to today's transactions in their current shift.
+    val scopedTransactions = remember(transactions, currentShift?.id, canViewAll) {
+        visibleWalletTransactionsForUser(
+            transactions = transactions,
+            canViewAll = canViewAll,
+            currentShiftId = currentShift?.id,
+            nowMillis = System.currentTimeMillis()
+        )
+    }
+    val visibleTransactions = remember(scopedTransactions, selectedWalletFilter, selectedStatusFilter, searchQuery) {
+        scopedTransactions.filter { tx ->
             val matchesWallet = selectedWalletFilter == null || tx.walletCode == selectedWalletFilter
             val matchesStatus = selectedStatusFilter == null || tx.status == selectedStatusFilter
             val matchesSearch = searchQuery.isBlank() ||
                     tx.transactionId.contains(searchQuery, ignoreCase = true) ||
                     tx.sender.contains(searchQuery, ignoreCase = true) ||
                     tx.amount.toString().contains(searchQuery)
-            matchesShift && matchesWallet && matchesStatus && matchesSearch
+            matchesWallet && matchesStatus && matchesSearch
         }
     }
 
-    // Totals per wallet
-    val jeebTxs = transactions.filter { it.walletCode == "JEEB" && (canViewAll || it.shiftId == currentShift?.id) }
-    val floosakTxs = transactions.filter { it.walletCode == "FLOOSAK" && (canViewAll || it.shiftId == currentShift?.id) }
-    val jawaliTxs = transactions.filter { it.walletCode == "JAWALI" && (canViewAll || it.shiftId == currentShift?.id) }
+    // Totals obey the same shift/day restriction as the visible list.
+    val jeebTxs = scopedTransactions.filter { it.walletCode == "JEEB" }
+    val floosakTxs = scopedTransactions.filter { it.walletCode == "FLOOSAK" }
+    val jawaliTxs = scopedTransactions.filter { it.walletCode == "JAWALI" }
 
     Scaffold(
         topBar = {
