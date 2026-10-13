@@ -108,9 +108,14 @@ class GatewaySyncEngine(
     private suspend fun processQueueItem(item: GatewayQueueEntity) {
         val startedAt = System.currentTimeMillis()
         if (queueDao.claimItem(item.id, startedAt) != 1) return
-        val claimedItem = item.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
 
-        if (item.targetEndpoint.isBlank()) {
+        // A worker may have loaded this row before a manual retry reset it. Once the
+        // atomic claim succeeds, reload the current row so stale retryCount/payload
+        // values cannot overwrite the manual retry state.
+        val freshClaimedRow = queueDao.getQueueItemById(item.id) ?: return
+        val claimedItem = freshClaimedRow.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
+
+        if (claimedItem.targetEndpoint.isBlank()) {
             // A missing destination is not a successful delivery. Keep the record
             // in the retry/error queue so the UI cannot report silent success.
             handleFailure(claimedItem, "Endpoint URL is not configured; item was not transmitted")
@@ -118,7 +123,7 @@ class GatewaySyncEngine(
         }
 
         try {
-            val success = sendHttpRequest(item.targetEndpoint, item.payload)
+            val success = sendHttpRequest(claimedItem.targetEndpoint, claimedItem.payload)
             if (success) {
                 queueDao.updateItem(
                     claimedItem.copy(
