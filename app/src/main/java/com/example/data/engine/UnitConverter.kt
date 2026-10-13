@@ -23,6 +23,12 @@ object UnitConverter {
         }
     }
 
+    fun compatibleUnits(unit: String): List<String> = when (definition(unit).family) {
+        Family.MASS -> listOf("g", "kg")
+        Family.VOLUME -> listOf("ml", "l")
+        Family.COUNT -> listOf(unit.trim())
+    }
+
     fun convert(amount: Double, fromUnit: String, toUnit: String): Double {
         require(amount.isFinite() && amount >= 0.0) { "الكمية يجب أن تكون رقمًا محدودًا وغير سالبة" }
         val from = definition(fromUnit)

@@ -1,5 +1,7 @@
 package com.example.ui.admin
 
+import com.example.data.engine.UnitConverter
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -106,7 +108,8 @@ fun AdminProductsTab(
 private data class RecipeComponentDraft(
     val sourceId: String,
     val amountText: String,
-    val sourceType: String = "RAW"
+    val sourceType: String = "RAW",
+    val unit: String = ""
 )
 
 @Composable
@@ -118,8 +121,8 @@ fun AdminRecipesTab(
     mixtures: List<MixtureEntity> = emptyList()
 ) {
     fun initialComponent(): RecipeComponentDraft = when {
-        rawMaterials.isNotEmpty() -> RecipeComponentDraft(rawMaterials.first().id, "30", "RAW")
-        mixtures.isNotEmpty() -> RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE")
+        rawMaterials.isNotEmpty() -> RecipeComponentDraft(rawMaterials.first().id, "30", "RAW", rawMaterials.first().baseUnit)
+        mixtures.isNotEmpty() -> RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE", mixtures.first().unit)
         else -> RecipeComponentDraft("", "30", "RAW")
     }
 
@@ -238,7 +241,11 @@ fun AdminRecipesTab(
                         } else null
                         val hasSources = if (draft.sourceType == "RAW") rawMaterials.isNotEmpty() else mixtures.isNotEmpty()
                         val chosenName = chosenMaterial?.name ?: chosenMixture?.name ?: "اختر المكوّن"
-                        val chosenUnit = chosenMaterial?.baseUnit ?: chosenMixture?.unit ?: "وحدة"
+                        val chosenBaseUnit = chosenMaterial?.baseUnit ?: chosenMixture?.unit ?: "وحدة"
+                        val selectedUnit = draft.unit.ifBlank { chosenBaseUnit }
+                        var unitMenuExpanded by remember(index) { mutableStateOf(false) }
+                        val unitOptions = runCatching { UnitConverter.compatibleUnits(chosenBaseUnit) }
+                            .getOrElse { listOf(chosenBaseUnit) }
 
                         Card(
                             shape = RoundedCornerShape(10.dp),
@@ -257,7 +264,11 @@ fun AdminRecipesTab(
                                             mixtures.firstOrNull()?.id.orEmpty()
                                         }
                                         components = components.mapIndexed { i, old ->
-                                            if (i == index) old.copy(sourceId = nextId, sourceType = nextType) else old
+                                            if (i == index) {
+                                                val nextUnit = if (nextType == "RAW") rawMaterials.firstOrNull()?.baseUnit.orEmpty()
+                                                else mixtures.firstOrNull()?.unit.orEmpty()
+                                                old.copy(sourceId = nextId, sourceType = nextType, unit = nextUnit)
+                                            } else old
                                         }
                                         recipeError = null
                                     },
@@ -277,7 +288,7 @@ fun AdminRecipesTab(
                                             enabled = hasSources,
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text(chosenName + " (" + chosenUnit + ")")
+                                            Text(chosenName + " (" + selectedUnit + ")")
                                         }
                                         DropdownMenu(
                                             expanded = sourceMenuExpanded,
@@ -289,7 +300,7 @@ fun AdminRecipesTab(
                                                         text = { Text(material.name + " (" + material.baseUnit + ")") },
                                                         onClick = {
                                                             components = components.mapIndexed { i, old ->
-                                                                if (i == index) old.copy(sourceId = material.id) else old
+                                                                if (i == index) old.copy(sourceId = material.id, unit = material.baseUnit) else old
                                                             }
                                                             sourceMenuExpanded = false
                                                             recipeError = null
@@ -302,7 +313,7 @@ fun AdminRecipesTab(
                                                         text = { Text(mixture.name + " (" + mixture.unit + ")") },
                                                         onClick = {
                                                             components = components.mapIndexed { i, old ->
-                                                                if (i == index) old.copy(sourceId = mixture.id) else old
+                                                                if (i == index) old.copy(sourceId = mixture.id, unit = mixture.unit) else old
                                                             }
                                                             sourceMenuExpanded = false
                                                             recipeError = null
@@ -331,16 +342,47 @@ fun AdminRecipesTab(
                                         }
                                         recipeError = null
                                     },
-                                    label = { Text("الكمية لكل حصة (" + chosenUnit + ")") },
+                                    label = { Text("الكمية لكل حصة (" + selectedUnit + ")") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                val amount = draft.amountText.toDoubleOrNull() ?: 0.0
-                                val estimate = when {
-                                    chosenMaterial != null -> amount * chosenMaterial.avgCostPerUnit
-                                    chosenMixture != null && chosenMixture.unitCost.isFinite() -> amount * chosenMixture.unitCost
-                                    else -> 0.0
+
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedButton(
+                                        onClick = { unitMenuExpanded = true },
+                                        enabled = chosenMaterial != null || chosenMixture != null,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("وحدة قياس الكمية: " + selectedUnit)
+                                    }
+                                    DropdownMenu(
+                                        expanded = unitMenuExpanded,
+                                        onDismissRequest = { unitMenuExpanded = false }
+                                    ) {
+                                        unitOptions.forEach { option ->
+                                            DropdownMenuItem(
+                                                text = { Text(option) },
+                                                onClick = {
+                                                    components = components.mapIndexed { i, old ->
+                                                        if (i == index) old.copy(unit = option) else old
+                                                    }
+                                                    unitMenuExpanded = false
+                                                    recipeError = null
+                                                }
+                                            )
+                                        }
+                                    }
                                 }
+                                val amount = draft.amountText.toDoubleOrNull() ?: 0.0
+                                val estimate = runCatching {
+                                    when {
+                                        chosenMaterial != null ->
+                                            UnitConverter.convert(amount, selectedUnit, chosenMaterial.baseUnit) * chosenMaterial.avgCostPerUnit
+                                        chosenMixture != null && chosenMixture.unitCost.isFinite() ->
+                                            UnitConverter.convert(amount, selectedUnit, chosenMixture.unit) * chosenMixture.unitCost
+                                        else -> 0.0
+                                    }
+                                }.getOrDefault(0.0)
                                 if (chosenMaterial != null || chosenMixture != null) {
                                     Text(
                                         "تكلفة تقديرية للمكوّن: " + estimate + " ريال",
@@ -356,11 +398,11 @@ fun AdminRecipesTab(
                         onClick = {
                             when {
                                 rawMaterials.isNotEmpty() -> {
-                                    components = components + RecipeComponentDraft(rawMaterials.first().id, "30", "RAW")
+                                    components = components + RecipeComponentDraft(rawMaterials.first().id, "30", "RAW", rawMaterials.first().baseUnit)
                                     recipeError = null
                                 }
                                 mixtures.isNotEmpty() -> {
-                                    components = components + RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE")
+                                    components = components + RecipeComponentDraft(mixtures.first().id, "30", "MIXTURE", mixtures.first().unit)
                                     recipeError = null
                                 }
                                 else -> recipeError = "أضف مادة خام أو خلطة أولًا"
@@ -405,8 +447,10 @@ fun AdminRecipesTab(
                                         name = material.name,
                                         amount = amount,
                                         quantity = amount,
-                                        unit = material.baseUnit,
-                                        costContribution = material.avgCostPerUnit * amount
+                                        unit = draft.unit.ifBlank { material.baseUnit },
+                                        costContribution = runCatching {
+                                            UnitConverter.convert(amount, draft.unit.ifBlank { material.baseUnit }, material.baseUnit) * material.avgCostPerUnit
+                                        }.getOrDefault(0.0)
                                     )
                                 }
                             } else {
@@ -422,8 +466,10 @@ fun AdminRecipesTab(
                                         name = mixture.name,
                                         amount = amount,
                                         quantity = amount,
-                                        unit = mixture.unit,
-                                        costContribution = mixture.unitCost * amount
+                                        unit = draft.unit.ifBlank { mixture.unit },
+                                        costContribution = runCatching {
+                                            UnitConverter.convert(amount, draft.unit.ifBlank { mixture.unit }, mixture.unit) * mixture.unitCost
+                                        }.getOrDefault(0.0)
                                     )
                                 }
                             }

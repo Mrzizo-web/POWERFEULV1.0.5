@@ -58,4 +58,13 @@ class RecipeAndSalesPureUnitTest {
     fun testUnknownUnitIsRejected() {
         UnitConverter.convert(100.0, "scoop", "g")
     }
+    @Test
+    fun compatibleUnitChoicesMatchMassVolumeAndCountFamilies() {
+        assertEquals(listOf("g", "kg"), UnitConverter.compatibleUnits("kg"))
+        assertEquals(listOf("g", "kg"), UnitConverter.compatibleUnits("جرام"))
+        assertEquals(listOf("ml", "l"), UnitConverter.compatibleUnits("مل"))
+        assertEquals(listOf("ml", "l"), UnitConverter.compatibleUnits("لتر"))
+        assertEquals(listOf("حبة"), UnitConverter.compatibleUnits("حبة"))
+    }
+
 }
