@@ -28,16 +28,33 @@ import java.util.Locale
 fun AdminInventoryTab(
     rawMaterials: List<RawMaterialEntity>,
     onAddStock: (materialId: String, amount: Double) -> Unit,
-    onAddRawMaterial: (name: String, unit: String, initialStock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> }
+    onAddRawMaterial: (name: String, unit: String, initialStock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> },
+    onRecordWaste: (materialId: String, quantity: Double, unit: String, reason: String, notes: String) -> Unit = { _, _, _, _, _ -> },
+    onApplyStockAdjustment: (materialId: String, actualStock: Double, reason: String) -> Unit = { _, _, _ -> }
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var showStockDialog by remember { mutableStateOf<RawMaterialEntity?>(null) }
+    var showWasteDialog by remember { mutableStateOf<RawMaterialEntity?>(null) }
+    var showAdjustmentDialog by remember { mutableStateOf<RawMaterialEntity?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUnit by remember { mutableStateOf("جرام") }
     var newStockText by remember { mutableStateOf("") }
     var newMinStockText by remember { mutableStateOf("10") }
     var newCostText by remember { mutableStateOf("0.0") }
     var addAmountText by remember { mutableStateOf("") }
+    var wasteQuantityText by remember { mutableStateOf("") }
+    var wasteReason by remember { mutableStateOf("SPOILED") }
+    var wasteNotes by remember { mutableStateOf("") }
+    var wasteError by remember { mutableStateOf<String?>(null) }
+    var actualStockText by remember { mutableStateOf("") }
+    var adjustmentReasonText by remember { mutableStateOf("") }
+    var adjustmentError by remember { mutableStateOf<String?>(null) }
+    val wasteReasons = listOf(
+        "SPOILED" to "تلف",
+        "DAMAGED" to "كسر أو خطأ",
+        "EXPIRED" to "انتهاء الصلاحية",
+        "OTHER" to "أخرى"
+    )
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -68,11 +85,34 @@ fun AdminInventoryTab(
                             Text(m.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Text("الرصيد الحالي: ${m.currentStock} ${m.baseUnit} • حد التنبيه: ${m.minStock} • التكلفة: ${m.avgCostPerUnit} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(
-                            onClick = { showStockDialog = m },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text("توريد / إضافة كمية", fontSize = 11.sp)
+                            Button(
+                                onClick = { showStockDialog = m },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            ) { Text("توريد / إضافة", fontSize = 11.sp) }
+                            OutlinedButton(
+                                onClick = {
+                                    wasteQuantityText = ""
+                                    wasteNotes = ""
+                                    wasteReason = "SPOILED"
+                                    wasteError = null
+                                    showWasteDialog = m
+                                }
+                            ) { Text("تسجيل هدر", fontSize = 11.sp) }
+                            OutlinedButton(
+                                onClick = {
+                                    actualStockText = m.currentStock.toString()
+                                    adjustmentReasonText = ""
+                                    adjustmentError = null
+                                    showAdjustmentDialog = m
+                                }
+                            ) { Text("جرد / تسوية", fontSize = 11.sp) }
                         }
                     }
                 }
@@ -112,6 +152,112 @@ fun AdminInventoryTab(
             },
             dismissButton = {
                 TextButton(onClick = { showAddDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    if (showWasteDialog != null) {
+        val targetMat = showWasteDialog!!
+        var wasteMenuOpen by remember(targetMat.id) { mutableStateOf(false) }
+        AlertDialog(
+            onDismissRequest = { showWasteDialog = null; wasteError = null },
+            title = { Text("تسجيل هدر: " + targetMat.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("الرصيد قبل العملية: " + targetMat.currentStock + " " + targetMat.baseUnit, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = wasteQuantityText,
+                        onValueChange = { wasteQuantityText = it; wasteError = null },
+                        label = { Text("كمية الهدر (" + targetMat.baseUnit + ")") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { wasteMenuOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("سبب الهدر: " + (wasteReasons.firstOrNull { it.first == wasteReason }?.second ?: "أخرى"))
+                        }
+                        DropdownMenu(expanded = wasteMenuOpen, onDismissRequest = { wasteMenuOpen = false }) {
+                            wasteReasons.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.second) },
+                                    onClick = { wasteReason = option.first; wasteMenuOpen = false }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = wasteNotes,
+                        onValueChange = { wasteNotes = it },
+                        label = { Text("ملاحظات (اختياري)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (wasteError != null) Text(wasteError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val quantity = wasteQuantityText.toDoubleOrNull()
+                    when {
+                        quantity == null || !quantity.isFinite() || quantity <= 0.0 ->
+                            wasteError = "أدخل كمية هدر موجبة وصالحة"
+                        quantity > targetMat.currentStock ->
+                            wasteError = "كمية الهدر أكبر من الرصيد الحالي"
+                        else -> {
+                            onRecordWaste(targetMat.id, quantity, targetMat.baseUnit, wasteReason, wasteNotes.trim())
+                            showWasteDialog = null
+                            wasteError = null
+                        }
+                    }
+                }) { Text("تأكيد الهدر") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWasteDialog = null; wasteError = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    if (showAdjustmentDialog != null) {
+        val targetMat = showAdjustmentDialog!!
+        AlertDialog(
+            onDismissRequest = { showAdjustmentDialog = null; adjustmentError = null },
+            title = { Text("جرد / تسوية: " + targetMat.name) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("الرصيد الدفتري: " + targetMat.currentStock + " " + targetMat.baseUnit, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = actualStockText,
+                        onValueChange = { actualStockText = it; adjustmentError = null },
+                        label = { Text("الرصيد الفعلي بعد الجرد (" + targetMat.baseUnit + ")") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = adjustmentReasonText,
+                        onValueChange = { adjustmentReasonText = it; adjustmentError = null },
+                        label = { Text("سبب التسوية (إلزامي)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (adjustmentError != null) Text(adjustmentError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val actual = actualStockText.toDoubleOrNull()
+                    when {
+                        actual == null || !actual.isFinite() || actual < 0.0 ->
+                            adjustmentError = "الرصيد الفعلي يجب أن يكون صفرًا أو أكبر"
+                        adjustmentReasonText.isBlank() ->
+                            adjustmentError = "اكتب سبب التسوية لتسجيلها في سجل التدقيق"
+                        else -> {
+                            onApplyStockAdjustment(targetMat.id, actual, adjustmentReasonText.trim())
+                            showAdjustmentDialog = null
+                            adjustmentError = null
+                        }
+                    }
+                }) { Text("حفظ الجرد") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAdjustmentDialog = null; adjustmentError = null }) { Text("إلغاء") }
             }
         )
     }

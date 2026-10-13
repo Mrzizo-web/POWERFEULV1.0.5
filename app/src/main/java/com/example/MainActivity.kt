@@ -214,7 +214,15 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.addRawMaterialStock(matId, amount)
                                             },
-                                            onAddRecipe = { name, prodId, items, notes ->
+                                            onRecordWaste = { matId, quantity, unit, reason, notes ->
+                                                 viewModel.onUserActivity()
+                                                 viewModel.recordWaste(matId, quantity, unit, reason, notes)
+                                             },
+                                             onApplyStockAdjustment = { matId, actualStock, reason ->
+                                                 viewModel.onUserActivity()
+                                                 viewModel.applyStockAdjustment(matId, actualStock, reason)
+                                             },
+                                             onAddRecipe = { name, prodId, items, notes ->
                                                 viewModel.onUserActivity()
                                                 viewModel.addRecipe(name, prodId, items, notes)
                                             },

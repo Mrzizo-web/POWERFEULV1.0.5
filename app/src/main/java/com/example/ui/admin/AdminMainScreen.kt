@@ -58,6 +58,8 @@ fun AdminMainScreen(
     onAddExpense: (title: String, amount: Double, category: String, paidTo: String, notes: String) -> Unit = { _, _, _, _, _ -> },
     onAddRawMaterial: (name: String, unit: String, stock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> },
     onAddStock: (materialId: String, amount: Double) -> Unit = { _, _ -> },
+    onRecordWaste: (materialId: String, quantity: Double, unit: String, reason: String, notes: String) -> Unit = { _, _, _, _, _ -> },
+    onApplyStockAdjustment: (materialId: String, actualStock: Double, reason: String) -> Unit = { _, _, _ -> },
     onToggleProductActive: (productId: String, active: Boolean) -> Unit = { _, _ -> },
     onToggleProductAvailability: (productId: String, available: Boolean) -> Unit = { _, _ -> },
     onVoidSale: (saleId: String, reason: String) -> Unit,
@@ -179,7 +181,13 @@ fun AdminMainScreen(
                         onToggleProductAvailability = onToggleProductAvailability
                     )
                     AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe, mixtures)
-                    AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
+                    AdminTab.INVENTORY -> AdminInventoryTab(
+                        rawMaterials = rawMaterials,
+                        onAddStock = onAddStock,
+                        onAddRawMaterial = onAddRawMaterial,
+                        onRecordWaste = onRecordWaste,
+                        onApplyStockAdjustment = onApplyStockAdjustment
+                    )
                     AdminTab.SALES -> AdminSalesTab(sales, onVoidSale)
                     AdminTab.PURCHASES -> AdminPurchasesTab(
                         purchases = purchases,
