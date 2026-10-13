@@ -1219,8 +1219,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تغيير مفتاح AI")) return
         viewModelScope.launch(Dispatchers.IO) {
-            powerAiEngine.saveGeminiApiKey(key)
-            snackbarMessage.value = "تم حفظ مفتاح Gemini API بنجاح"
+            try {
+                powerAiEngine.saveGeminiApiKey(key)
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = "تم حفظ مفتاح Gemini API بنجاح"
+                }
+            } catch (_: Exception) {
+                // Never expose key material or a crypto exception in UI/log output.
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = "تعذر حفظ مفتاح Gemini API في التخزين الآمن"
+                }
+            }
         }
     }
 
