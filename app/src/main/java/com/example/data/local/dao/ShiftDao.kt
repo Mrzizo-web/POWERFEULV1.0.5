@@ -50,6 +50,9 @@ interface ShiftDao {
     @Query("SELECT * FROM shift_handovers ORDER BY timestamp DESC LIMIT 20")
     fun getRecentHandovers(): Flow<List<ShiftHandoverEntity>>
 
+    @Query("SELECT * FROM shift_handovers WHERE fromShiftId = :fromShiftId LIMIT 1")
+    suspend fun getHandoverByFromShiftId(fromShiftId: String): ShiftHandoverEntity?
+
     @Query("SELECT * FROM shift_handovers ORDER BY timestamp DESC LIMIT 1")
     suspend fun getLastHandover(): ShiftHandoverEntity?
 }

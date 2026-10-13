@@ -25,6 +25,9 @@ class ShiftEngine(private val db: AppDatabase) {
         openingCash: Double,
         notes: String = ""
     ): ShiftResult {
+        if (!openingCash.isFinite() || openingCash < 0.0) {
+            return ShiftResult.Error("النقدية الافتتاحية يجب أن تكون قيمة غير سالبة وصالحة")
+        }
         val existing = shiftDao.getCurrentOpenShiftSync()
         if (existing != null) {
             return ShiftResult.Error("يوجد شفت مفتوح حالياً للمستخدم ${existing.userName}")
@@ -69,6 +72,18 @@ class ShiftEngine(private val db: AppDatabase) {
     ): ShiftResult = db.withTransaction {
         val shift = shiftDao.getShiftById(shiftId)
             ?: return@withTransaction ShiftResult.Error("الشفت غير موجود")
+        if (shift.status != ShiftStatus.OPEN) {
+            return@withTransaction ShiftResult.Error("تم إغلاق هذا الشفت مسبقًا")
+        }
+        if (!actualCash.isFinite() || actualCash < 0.0 ||
+            !handedOverCash.isFinite() || handedOverCash < 0.0 ||
+            !leftForNextShift.isFinite() || leftForNextShift < 0.0
+        ) {
+            return@withTransaction ShiftResult.Error("قيم إغلاق الشفت يجب أن تكون أرقامًا غير سالبة وصالحة")
+        }
+        if (handedOverCash > actualCash || leftForNextShift > actualCash) {
+            return@withTransaction ShiftResult.Error("مبالغ التسليم والمتبقي لا يمكن أن تتجاوز النقدية الفعلية")
+        }
 
         val discrepancy = actualCash - shift.expectedCash
         val closed = shift.copy(
@@ -105,16 +120,37 @@ class ShiftEngine(private val db: AppDatabase) {
         actualReceived: Double,
         notes: String = ""
     ): ShiftResult = db.withTransaction {
+        if (!actualReceived.isFinite() || actualReceived < 0.0) {
+            return@withTransaction ShiftResult.Error("النقدية المستلمة يجب أن تكون قيمة غير سالبة وصالحة")
+        }
         val fromShift = shiftDao.getShiftById(fromShiftId)
             ?: return@withTransaction ShiftResult.Error("الشفت السابق غير موجود")
-
+        if (fromShift.status != ShiftStatus.CLOSED) {
+            return@withTransaction ShiftResult.Error("يجب إغلاق الشفت السابق قبل استلام عهدته")
+        }
+        if (shiftDao.getHandoverByFromShiftId(fromShiftId) != null) {
+            return@withTransaction ShiftResult.Error("تم تسجيل استلام عهدة هذا الشفت مسبقًا")
+        }
         val expected = fromShift.leftForNextShiftCash
-        val discrepancy = actualReceived - expected
+        if (!expected.isFinite() || expected < 0.0) {
+            return@withTransaction ShiftResult.Error("قيمة عهدة الشفت السابق غير صالحة")
+        }
 
+        // The target shift and the handover are committed together. If starting a
+        // target shift fails, no orphan handover record can be left behind.
+        val startResult = startShiftInternal(
+            currentUser,
+            actualReceived,
+            "استلام من شفت " + fromShift.shiftNumber
+        )
+        if (startResult !is ShiftResult.Success) return@withTransaction startResult
+        val newShift = startResult.shift
+        val discrepancy = actualReceived - expected
         val handover = ShiftHandoverEntity(
             fromShiftId = fromShiftId,
             fromUserId = fromShift.userId,
             fromUserName = fromShift.userName,
+            toShiftId = newShift.id,
             toUserId = currentUser.id,
             toUserName = currentUser.name,
             expectedLeftAmount = expected,
@@ -123,11 +159,18 @@ class ShiftEngine(private val db: AppDatabase) {
             notes = notes
         )
         shiftDao.insertHandover(handover)
-
-        startShiftInternal(
-            currentUser,
-            actualReceived,
-            "استلام من شفت ${fromShift.shiftNumber}"
+        auditLogDao.insertLog(
+            AuditLogEntity(
+                userId = currentUser.id,
+                userName = currentUser.name,
+                userRole = currentUser.role.name,
+                action = "SHIFT_HANDOVER_ACCEPTED",
+                entityType = "SHIFT_HANDOVER",
+                entityId = handover.id,
+                newValue = "المستلم: " + actualReceived + " ريال؛ المتوقع: " + expected + " ريال",
+                notes = "استلام عهدة الشفت رقم " + fromShift.shiftNumber + " إلى الشفت رقم " + newShift.shiftNumber
+            )
         )
+        startResult
     }
 }
