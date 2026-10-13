@@ -8,6 +8,7 @@ import com.example.data.seed.DatabaseSeeder
 import com.example.domain.model.UserRole
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,7 +48,7 @@ class DatabaseSeederOwnerRecoveryAndroidTest {
             assertTrue(recoveredOwner!!.isActive)
             assertEquals(owner.pinHash, recoveredOwner.pinHash)
             assertEquals(owner.pinSalt, recoveredOwner.pinSalt)
-            assertEquals(0, db.userDao().getUserById("inactive-cashier")!!.isActive.compareTo(true))
+            assertFalse(db.userDao().getUserById("inactive-cashier")!!.isActive)
         } finally {
             db.close()
         }
