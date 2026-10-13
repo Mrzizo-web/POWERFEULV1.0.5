@@ -60,21 +60,6 @@ object DatabaseSeeder {
             }
         }
 
-        // Recovery for the known local owner only: if every account is inactive,
-        // re-enable this account without changing its password or lockout state.
-        // Login still requires the existing PIN; known legacy PIN migration above
-        // remains the only path that can request PIN re-enrollment.
-        val activeUserCount = db.userDao().countActiveUsers()
-        val ownerForRecovery = db.userDao().getUserById(ownerId)
-        if (activeUserCount == 0 && ownerForRecovery != null && !ownerForRecovery.isActive) {
-            db.userDao().updateUser(
-                ownerForRecovery.copy(
-                    isActive = true,
-                    updatedAt = System.currentTimeMillis()
-                )
-            )
-        }
-
         // Seed Wallets if not present
         val wallets = db.walletDao().getAllWalletsSync()
         if (wallets.isEmpty()) {
