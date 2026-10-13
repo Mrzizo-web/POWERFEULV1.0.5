@@ -1,6 +1,7 @@
 package com.example.gateway
 
 import android.content.Context
+import android.util.Log
 import com.example.data.engine.GatewaySyncEngine
 import com.example.data.engine.IngestResult
 import com.example.data.engine.WalletMatchingEngine
@@ -29,19 +30,28 @@ class GatewayServer(
     @Volatile
     var isRunning: Boolean = false
         private set
+    @Volatile
+    var lastStartError: String? = null
+        private set
 
     fun start(): Boolean {
         if (isRunning) return true
+        var socket: ServerSocket? = null
         return try {
-            val socket = ServerSocket()
+            socket = ServerSocket()
             socket.reuseAddress = true
             socket.bind(java.net.InetSocketAddress(port))
             serverSocket = socket
+            lastStartError = null
             isRunning = true
             coroutineScope.launch { listen() }
             true
-        } catch (_: Exception) {
+        } catch (error: Exception) {
             isRunning = false
+            runCatching { socket?.close() }
+            serverSocket = null
+            lastStartError = "${error.javaClass.simpleName}: ${error.message ?: "no details"}"
+            Log.e("GatewayServer", "Unable to bind Gateway server to port $port", error)
             false
         }
     }
