@@ -7,6 +7,9 @@ import com.example.data.local.entity.WalletSmsEntity
 import com.example.data.local.entity.WalletTransactionEntity
 import com.example.domain.model.SmsProcessingStatus
 import com.example.domain.model.WalletTransferStatus
+import com.example.domain.model.UserRole
+import com.example.security.AppPermission
+import com.example.security.PermissionChecker
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.sync.Mutex
@@ -224,30 +227,47 @@ class WalletMatchingEngine(private val db: AppDatabase) {
         userName: String,
         userRole: String
     ): Result<WalletTransactionEntity> {
-        val tx = walletDao.getTransactionById(txId) ?: return Result.failure(Exception("الحوالة غير موجودة"))
-        val prev = tx.status
-        val updated = tx.copy(
-            status = newStatus,
-            rejectionReason = if (newStatus == WalletTransferStatus.REJECTED) reason else tx.rejectionReason,
-            updatedAt = System.currentTimeMillis()
-        )
-        db.withTransaction {
-            walletDao.updateTransaction(updated)
-            auditLogDao.insertLog(
-                AuditLogEntity(
-                    userId = userId,
-                    userName = userName,
-                    userRole = userRole,
-                    action = "UPDATE_WALLET_TX_STATUS",
-                    entityType = "WALLET_TX",
-                    entityId = txId,
-                    previousValue = prev.name,
-                    newValue = newStatus.name,
-                    notes = reason.ifEmpty { "تعديل حالة الحوالة إلى ${newStatus.titleAr}" }
-                )
-            )
+        val role = runCatching { UserRole.valueOf(userRole) }.getOrNull()
+            ?: return Result.failure(SecurityException("دور المستخدم غير صالح"))
+        if (!PermissionChecker.hasPermission(role, AppPermission.MANAGE_WALLETS)) {
+            return Result.failure(SecurityException("ليس لديك صلاحية تعديل حالة الحوالة"))
         }
-        return Result.success(updated)
+        if (newStatus == WalletTransferStatus.REJECTED && reason.isBlank()) {
+            return Result.failure(IllegalArgumentException("سبب رفض الحوالة مطلوب"))
+        }
+        return try {
+            db.withTransaction {
+                val tx = walletDao.getTransactionById(txId)
+                    ?: return@withTransaction Result.failure(Exception("الحوالة غير موجودة"))
+                if (tx.status == WalletTransferStatus.DUPLICATE && newStatus != WalletTransferStatus.DUPLICATE) {
+                    return@withTransaction Result.failure(IllegalStateException("لا يمكن تغيير حالة حوالة مصنفة مكررة"))
+                }
+                val updated = tx.copy(
+                    status = newStatus,
+                    rejectionReason = if (newStatus == WalletTransferStatus.REJECTED) reason.trim() else tx.rejectionReason,
+                    updatedAt = System.currentTimeMillis()
+                )
+                walletDao.updateTransaction(updated)
+                auditLogDao.insertLog(
+                    AuditLogEntity(
+                        userId = userId,
+                        userName = userName,
+                        userRole = userRole,
+                        action = "UPDATE_WALLET_TX_STATUS",
+                        entityType = "WALLET_TX",
+                        entityId = txId,
+                        previousValue = tx.status.name,
+                        newValue = newStatus.name,
+                        notes = reason.ifEmpty { "تعديل حالة الحوالة إلى ${newStatus.titleAr}" }
+                    )
+                )
+                Result.success(updated)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun reassignShift(
@@ -260,32 +280,57 @@ class WalletMatchingEngine(private val db: AppDatabase) {
         userRole: String,
         reason: String
     ): Result<WalletTransactionEntity> {
-        val tx = walletDao.getTransactionById(txId) ?: return Result.failure(Exception("الحوالة غير موجودة"))
-        val prevShift = tx.shiftId ?: "خارج الدوام"
-        val updated = tx.copy(
-            shiftId = newShiftId,
-            cashierId = cashierId,
-            cashierName = cashierName,
-            status = WalletTransferStatus.MATCHED,
-            notes = "تمت إعادة الربط بالشفت بواسطة $userName: $reason",
-            updatedAt = System.currentTimeMillis()
-        )
-        db.withTransaction {
-            walletDao.updateTransaction(updated)
-            auditLogDao.insertLog(
-                AuditLogEntity(
-                    userId = userId,
-                    userName = userName,
-                    userRole = userRole,
-                    action = "REASSIGN_WALLET_TX_SHIFT",
-                    entityType = "WALLET_TX",
-                    entityId = txId,
-                    previousValue = prevShift,
-                    newValue = newShiftId,
-                    notes = "إعادة إسناد الحوالة: $reason"
-                )
-            )
+        val role = runCatching { UserRole.valueOf(userRole) }.getOrNull()
+            ?: return Result.failure(SecurityException("دور المستخدم غير صالح"))
+        if (!PermissionChecker.hasPermission(role, AppPermission.REASSIGN_TRANSFER)) {
+            return Result.failure(SecurityException("ليس لديك صلاحية إعادة إسناد الحوالة"))
         }
-        return Result.success(updated)
+        if (reason.isBlank()) {
+            return Result.failure(IllegalArgumentException("سبب إعادة إسناد الحوالة مطلوب"))
+        }
+        return try {
+            db.withTransaction {
+                val tx = walletDao.getTransactionById(txId)
+                    ?: return@withTransaction Result.failure(Exception("الحوالة غير موجودة"))
+                if (tx.status == WalletTransferStatus.DUPLICATE || tx.status == WalletTransferStatus.REJECTED) {
+                    return@withTransaction Result.failure(IllegalStateException("لا يمكن إعادة إسناد حوالة مكررة أو مرفوضة"))
+                }
+                val targetShift = shiftDao.getShiftById(newShiftId)
+                    ?: return@withTransaction Result.failure(IllegalArgumentException("الشفت الهدف غير موجود"))
+                if (targetShift.userId != cashierId || targetShift.userName != cashierName) {
+                    return@withTransaction Result.failure(IllegalArgumentException("بيانات الكاشير لا تطابق مالك الشفت الهدف"))
+                }
+                val previousShift = tx.shiftId ?: "خارج الدوام"
+                val updated = tx.copy(
+                    shiftId = newShiftId,
+                    cashierId = cashierId,
+                    cashierName = cashierName,
+                    status = WalletTransferStatus.MATCHED,
+                    notes = "تمت إعادة الربط بالشفت بواسطة $userName: $reason",
+                    updatedAt = System.currentTimeMillis()
+                )
+                walletDao.updateTransaction(updated)
+                auditLogDao.insertLog(
+                    AuditLogEntity(
+                        userId = userId,
+                        userName = userName,
+                        userRole = userRole,
+                        action = "REASSIGN_WALLET_TX_SHIFT",
+                        entityType = "WALLET_TX",
+                        entityId = txId,
+                        previousValue = previousShift,
+                        newValue = newShiftId,
+                        notes = "إعادة إسناد الحوالة: $reason"
+                    )
+                )
+                Result.success(updated)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
+
+
 }

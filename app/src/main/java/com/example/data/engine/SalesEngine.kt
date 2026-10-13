@@ -235,6 +235,8 @@ class SalesEngine(
                                 type = "SALE",
                                 amount = netAmount,
                                 balanceAfter = newDebt,
+                                balanceBefore = customer.currentDebt,
+                                shiftId = shift.id,
                                 paymentMethod = PaymentMethod.DEBT,
                                 referenceId = invoiceNumber,
                                 notes = "فاتورة بيع آجل $invoiceNumber",
@@ -315,12 +317,18 @@ class SalesEngine(
                                 }
                             )
                         }
-                        PaymentMethod.E_WALLET -> shift.copy(
-                            totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0)
-                        )
-                        PaymentMethod.DEBT -> shift.copy(
-                            totalDebtSales = (shift.totalDebtSales - sale.netAmount).coerceAtLeast(0.0)
-                        )
+                        PaymentMethod.E_WALLET -> {
+                            if (shift.totalWalletSales + 0.01 < sale.netAmount) {
+                                throw IllegalStateException("تعذر عكس الفاتورة: إجمالي مبيعات المحفظة لا يطابق سجل الفاتورة")
+                            }
+                            shift.copy(totalWalletSales = (shift.totalWalletSales - sale.netAmount).coerceAtLeast(0.0))
+                        }
+                        PaymentMethod.DEBT -> {
+                            if (shift.totalDebtSales + 0.01 < sale.netAmount) {
+                                throw IllegalStateException("تعذر عكس الفاتورة: إجمالي مبيعات الدين لا يطابق سجل الفاتورة")
+                            }
+                            shift.copy(totalDebtSales = (shift.totalDebtSales - sale.netAmount).coerceAtLeast(0.0))
+                        }
                     }
                     shiftDao.updateShift(reversedShift)
                 }
@@ -328,7 +336,12 @@ class SalesEngine(
                 if (sale.paymentMethod == PaymentMethod.DEBT && sale.customerId.isNotBlank()) {
                     val customer = customerDao.getCustomerById(sale.customerId)
                     if (customer != null) {
-                        val newDebt = (customer.currentDebt - sale.netAmount).coerceAtLeast(0.0)
+                        if (customer.currentDebt + 0.01 < sale.netAmount) {
+                            throw IllegalStateException(
+                                "تعذر إلغاء الفاتورة الآجلة: رصيد العميل الحالي أقل من قيمة الفاتورة، ويجب تسوية سجل الدين أولًا"
+                            )
+                        }
+                        val newDebt = customer.currentDebt - sale.netAmount
                         // Preserve a deliberately blocked/settled status; reverse only the balance.
                         customerDao.updateDebt(customer.id, newDebt, customer.status)
                         debtTransactionDao.insertDebtTransaction(
@@ -338,6 +351,8 @@ class SalesEngine(
                                 type = "VOID",
                                 amount = -sale.netAmount,
                                 balanceAfter = newDebt,
+                                balanceBefore = customer.currentDebt,
+                                shiftId = sale.shiftId,
                                 paymentMethod = PaymentMethod.DEBT,
                                 referenceId = sale.invoiceNumber,
                                 notes = "عكس دين الفاتورة الملغاة ${sale.invoiceNumber}",
