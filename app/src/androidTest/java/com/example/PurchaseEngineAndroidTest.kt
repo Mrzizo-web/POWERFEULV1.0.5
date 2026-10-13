@@ -5,8 +5,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.engine.InventoryEngine
 import com.example.data.engine.NewPurchaseItem
 import com.example.data.engine.PurchaseEngine
+import com.example.data.engine.RecipeManager
 import com.example.data.local.AppDatabase
+import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.RawMaterialEntity
+import com.example.data.local.entity.RecipeItemEntity
 import com.example.data.local.entity.SupplierEntity
 import com.example.data.local.entity.UserEntity
 import com.example.domain.model.UserRole
@@ -134,4 +137,59 @@ class PurchaseEngineAndroidTest {
         assertTrue(db.inventoryTransactionDao().getTransactionsByReference("unused-purchase-id").isEmpty())
         assertTrue(db.auditLogDao().getRecentLogs().first().none { it.action == "PURCHASE_CREATED" })
     }
+
+
+    @Test
+    fun purchaseRefreshesCurrentRecipeAndProductCostsWithoutChangingHistoricalSales() = runBlocking {
+        val product = ProductEntity(
+            id = "purchase-recipe-product",
+            name = "منتج تكلفة الشراء",
+            categoryId = "cat-test",
+            price = 200.0,
+            costPrice = 999.0
+        )
+        db.productDao().insertProduct(product)
+
+        val recipe = RecipeManager(db).saveRecipe(
+            name = "وصفة شوفان",
+            productId = product.id,
+            items = listOf(
+                RecipeItemEntity(
+                    recipeId = "",
+                    rawMaterialId = "material-1",
+                    name = "شوفان",
+                    amount = 100.0,
+                    quantity = 100.0,
+                    unit = "g"
+                )
+            ),
+            notes = "تكلفة محدثة بعد الشراء",
+            user = user
+        )
+        assertEquals(50.0, recipe.calculatedCost, 0.001)
+
+        engine.createPurchase(
+            supplierId = "supplier-1",
+            supplierName = "مورد الاختبار",
+            invoiceNumber = "SUP-PRICE-REFRESH",
+            items = listOf(
+                NewPurchaseItem(
+                    rawMaterialId = "material-1",
+                    rawMaterialName = "شوفان",
+                    quantity = 500.0,
+                    unit = "g",
+                    unitPrice = 2.0
+                )
+            ),
+            user = user
+        )
+
+        // Weighted average moves from 0.5 to 1.0 YER/g. Current recipe/product
+        // costs refresh to 100 YER atomically with the purchase.
+        assertEquals(1.0, db.rawMaterialDao().getRawMaterialById("material-1")!!.avgCostPerUnit, 0.001)
+        assertEquals(100.0, db.recipeDao().getRecipeById(recipe.id)!!.calculatedCost, 0.001)
+        assertEquals(100.0, db.productDao().getProductById(product.id)!!.costPrice, 0.001)
+    }
+
+
 }
