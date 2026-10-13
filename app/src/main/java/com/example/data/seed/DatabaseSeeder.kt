@@ -41,8 +41,11 @@ object DatabaseSeeder {
             }
             // Older databases may have stored a known default PIN as plaintext with
             // an empty salt. Clear only these exact legacy defaults; never custom PINs.
-            val hasPlaintextDefault =
-                existingOwner.pinSalt.isBlank() && existingOwner.pinHash in knownLegacyPins
+            val hasPlaintextDefault = isKnownLegacyPlaintextPin(
+                existingOwner.pinHash,
+                existingOwner.pinSalt,
+                knownLegacyPins
+            )
             val hasKnownDefault = hasHashedDefault || hasPlaintextDefault
             if (hasKnownDefault) {
                 db.userDao().updateUser(
@@ -235,4 +238,10 @@ object DatabaseSeeder {
             )
         }
     }
+    internal fun isKnownLegacyPlaintextPin(
+        pinHash: String,
+        pinSalt: String,
+        knownLegacyPins: List<String>
+    ): Boolean = pinSalt.isBlank() && pinHash in knownLegacyPins
+
 }
