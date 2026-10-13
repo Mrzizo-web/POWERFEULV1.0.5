@@ -536,6 +536,6 @@ class BackupRestoreEngine(
         private const val KEY_BITS = 256
         private const val GCM_TAG_BITS = 128
         private const val GCM_TAG_BYTES = 16
-        private val DEVICE_BOUND_SECRETS = setOf("gateway_token", "gateway_shared_secret", "gateway_hmac_key")
+        private val DEVICE_BOUND_SECRETS = setOf("gateway_token", "gateway_shared_secret", "gateway_hmac_key", "gemini_api_key")
     }
 }
