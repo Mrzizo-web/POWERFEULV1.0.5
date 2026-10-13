@@ -192,6 +192,14 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.toggleProductActive(productId, active)
                                             },
+                                            onCreatePurchase = { supplierId, supplierName, invoiceNumber, items, notes ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addPurchase(supplierId, supplierName, invoiceNumber, items, notes)
+                                            },
+                                            onAddSupplier = { name, phone, address, notes ->
+                                                viewModel.onUserActivity()
+                                                viewModel.addSupplier(name, phone, address, notes)
+                                            },
                                             onAddRawMaterial = { name, unit, stock, min, cost ->
                                                 viewModel.onUserActivity()
                                                 viewModel.addRawMaterial(name, unit, stock, min, cost)
