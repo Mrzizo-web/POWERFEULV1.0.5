@@ -5,6 +5,7 @@ import com.example.security.AppPermission
 import com.example.security.PermissionChecker
 
 enum class AdminTab(val titleAr: String) {
+    DASHBOARD("لوحة التحكم"),
     PRODUCTS("المنتجات"),
     RECIPES("الوصفات والخلطات"),
     INVENTORY("المخزون"),
@@ -22,6 +23,7 @@ enum class AdminTab(val titleAr: String) {
     SETTINGS("الإعدادات");
 
     fun requiredPermission(): AppPermission = when (this) {
+        DASHBOARD -> AppPermission.VIEW_REPORTS
         PRODUCTS -> AppPermission.MANAGE_PRODUCTS
         RECIPES -> AppPermission.MANAGE_RECIPES
         INVENTORY -> AppPermission.MANAGE_INVENTORY

@@ -125,6 +125,7 @@ fun AdminMainScreen(
                         icon = {
                             Icon(
                                 when (tab) {
+                                    AdminTab.DASHBOARD -> Icons.Default.Home
                                     AdminTab.PRODUCTS -> Icons.Default.Category
                                     AdminTab.RECIPES -> Icons.Default.Restaurant
                                     AdminTab.INVENTORY -> Icons.Default.Inventory
@@ -162,6 +163,14 @@ fun AdminMainScreen(
                         modifier = Modifier.padding(24.dp)
                     )
                 } else when (effectiveTab) {
+                    AdminTab.DASHBOARD -> AdminDashboardTab(
+                        sales = sales,
+                        saleItems = saleItems,
+                        expenses = expenses,
+                        rawMaterials = rawMaterials,
+                        customers = customers,
+                        shifts = shifts
+                    )
                     AdminTab.PRODUCTS -> AdminProductsTab(
                         categories = categories,
                         products = products,
