@@ -160,7 +160,7 @@ class PowerAiEngine(private val db: AppDatabase) {
         }
     }
 
-    private fun parseGeminiResponse(json: String): String {
+    internal fun parseGeminiResponse(json: String): String {
         return runCatching {
             val candidates = JSONObject(json).optJSONArray("candidates") ?: return ""
             val firstContent = candidates.optJSONObject(0)?.optJSONObject("content") ?: return ""
