@@ -197,7 +197,7 @@ fun AdminPurchasesTab(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("المشتريات والتوريد (\${purchases.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("المشتريات والتوريد (${purchases.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Text("تسجيل فاتورة شراء يحدّث المخزون ومتوسط التكلفة داخل معاملة واحدة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(modifier = Modifier.width(8.dp))
@@ -248,12 +248,12 @@ fun AdminPurchasesTab(
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
                         Text(
-                            "فاتورة: \${purchase.invoiceNumber}",
+                            "فاتورة: ${purchase.invoiceNumber}",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
-                        Text("المورد: \${purchase.supplierName}", fontSize = 12.sp)
-                        Text("الإجمالي: \${purchase.totalAmount} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        Text("المورد: ${purchase.supplierName}", fontSize = 12.sp)
+                        Text("الإجمالي: ${purchase.totalAmount} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                         if (purchase.notes.isNotBlank()) {
                             Text(purchase.notes, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -335,7 +335,7 @@ fun AdminPurchasesTab(
                                         ) {
                                             rawMaterials.forEach { material ->
                                                 DropdownMenuItem(
-                                                    text = { Text("\${material.name} (\${material.baseUnit})") },
+                                                    text = { Text("${material.name} (${material.baseUnit})") },
                                                     onClick = {
                                                         purchaseLines = purchaseLines.mapIndexed { i, old ->
                                                             if (i == index) old.copy(materialId = material.id) else old
@@ -366,7 +366,7 @@ fun AdminPurchasesTab(
                                             }
                                             purchaseError = null
                                         },
-                                        label = { Text("الكمية (\${selectedMaterial?.baseUnit ?: "الوحدة"})") },
+                                        label = { Text("الكمية (${selectedMaterial?.baseUnit ?: "الوحدة"})") },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
