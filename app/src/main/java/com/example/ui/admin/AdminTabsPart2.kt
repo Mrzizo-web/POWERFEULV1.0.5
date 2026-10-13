@@ -209,7 +209,7 @@ fun AdminPurchasesTab(
                 supplierError = null
                 showSupplierDialog = true
             }) {
-                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("إضافة مورد")
             }
