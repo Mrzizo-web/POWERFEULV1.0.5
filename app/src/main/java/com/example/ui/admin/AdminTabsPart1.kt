@@ -300,7 +300,8 @@ fun AdminRecipesTab(
     rawMaterials: List<RawMaterialEntity>,
     products: List<ProductEntity> = emptyList(),
     onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
-    mixtures: List<MixtureEntity> = emptyList()
+    mixtures: List<MixtureEntity> = emptyList(),
+    recipeItems: List<RecipeItemEntity> = emptyList()
 ) {
     fun initialComponent(): RecipeComponentDraft = when {
         rawMaterials.isNotEmpty() -> RecipeComponentDraft(rawMaterials.first().id, "30", "RAW", rawMaterials.first().baseUnit)
@@ -313,6 +314,7 @@ fun AdminRecipesTab(
     var selectedProductId by remember { mutableStateOf(products.firstOrNull()?.id ?: "") }
     var recipeNotes by remember { mutableStateOf("") }
     var recipeError by remember { mutableStateOf<String?>(null) }
+    var editingSourceRecipeId by remember { mutableStateOf<String?>(null) }
     var components by remember {
         mutableStateOf(listOf(initialComponent()))
     }
@@ -329,6 +331,7 @@ fun AdminRecipesTab(
                     recipeName = ""
                     recipeNotes = ""
                     recipeError = null
+                    editingSourceRecipeId = null
                     selectedProductId = products.firstOrNull()?.id.orEmpty()
                     components = listOf(initialComponent())
                     showDialog = true
@@ -358,6 +361,31 @@ fun AdminRecipesTab(
                         if (recipe.notes.isNotBlank()) {
                             Text(recipe.notes, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            enabled = recipeItems.any { it.recipeId == recipe.id },
+                            onClick = {
+                                val storedItems = recipeItems.filter { it.recipeId == recipe.id }
+                                if (storedItems.isNotEmpty()) {
+                                    recipeName = recipe.name
+                                    selectedProductId = recipe.productId
+                                    recipeNotes = recipe.notes
+                                    recipeError = null
+                                    editingSourceRecipeId = recipe.id
+                                    components = storedItems.map { item ->
+                                        val type = if (item.mixtureId.isNotBlank()) "MIXTURE" else "RAW"
+                                        val sourceId = if (type == "MIXTURE") item.mixtureId else item.rawMaterialId
+                                        val quantity = if (item.amount > 0.0) item.amount else item.quantity
+                                        RecipeComponentDraft(sourceId, quantity.toString(), type, item.unit)
+                                    }
+                                    showDialog = true
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("فتح المكونات وإنشاء إصدار جديد")
+                        }
                     }
                 }
             }
@@ -368,7 +396,7 @@ fun AdminRecipesTab(
         var productMenuExpanded by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("إنشاء وصفة متعددة المكونات") },
+            title = { Text(if (editingSourceRecipeId == null) "إنشاء وصفة متعددة المكونات" else "تعديل المكونات وإنشاء إصدار جديد") },
             text = {
                 Column(
                     modifier = Modifier
@@ -663,12 +691,13 @@ fun AdminRecipesTab(
                             parsedItems.size != components.size -> recipeError = "راجع كميات ومكونات الوصفة؛ يجب أن تكون كل الكميات أكبر من صفر"
                             else -> {
                                 onAddRecipe(recipeName.trim(), selectedProductId, parsedItems, recipeNotes.trim())
+                                editingSourceRecipeId = null
                                 showDialog = false
                             }
                         }
                     }
                 ) {
-                    Text("حفظ الوصفة")
+                    Text(if (editingSourceRecipeId == null) "حفظ الوصفة" else "حفظ الإصدار الجديد")
                 }
             },
             dismissButton = {

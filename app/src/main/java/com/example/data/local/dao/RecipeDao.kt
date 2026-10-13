@@ -34,6 +34,9 @@ interface RecipeDao {
     @Query("SELECT * FROM recipe_items WHERE recipeId = :recipeId")
     suspend fun getRecipeItemsSync(recipeId: String): List<RecipeItemEntity>
 
+    @Query("SELECT * FROM recipe_items ORDER BY recipeId ASC")
+    fun getAllRecipeItems(): Flow<List<RecipeItemEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecipe(recipe: RecipeEntity)
 

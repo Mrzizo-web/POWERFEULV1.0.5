@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
                     val products by viewModel.products.collectAsStateWithLifecycle()
                     val rawMaterials by viewModel.rawMaterials.collectAsStateWithLifecycle()
                     val recipes by viewModel.recipes.collectAsStateWithLifecycle()
+                    val recipeItems by viewModel.recipeItems.collectAsStateWithLifecycle()
                     val mixtures by viewModel.mixtures.collectAsStateWithLifecycle()
                     val suppliers by viewModel.suppliers.collectAsStateWithLifecycle()
                     val purchases by viewModel.purchases.collectAsStateWithLifecycle()
@@ -164,6 +165,7 @@ class MainActivity : ComponentActivity() {
                                             products = products,
                                             rawMaterials = rawMaterials,
                                             recipes = recipes,
+                                             recipeItems = recipeItems,
                                             mixtures = mixtures,
                                             sales = sales,
                                             saleItems = saleItems,

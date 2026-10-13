@@ -153,6 +153,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val recipes: StateFlow<List<RecipeEntity>> = db.recipeDao().getAllRecipes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val recipeItems: StateFlow<List<RecipeItemEntity>> = db.recipeDao().getAllRecipeItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val mixtures: StateFlow<List<MixtureEntity>> = db.mixtureDao().getAllMixtures()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
