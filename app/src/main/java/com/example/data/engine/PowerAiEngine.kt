@@ -10,15 +10,29 @@ import java.util.regex.Pattern
 
 class PowerAiEngine(private val db: AppDatabase) {
 
-    suspend fun getGeminiApiKey(): String {
-        return withContext(Dispatchers.IO) {
-            db.settingsDao().getSetting("gemini_api_key") ?: ""
+    suspend fun getGeminiApiKey(): String = withContext(Dispatchers.IO) {
+        val stored = db.settingsDao().getSetting("gemini_api_key") ?: ""
+        if (stored.isBlank()) return@withContext ""
+
+        // New keys are always encrypted. Migrate legacy plaintext values on read.
+        if (stored.startsWith(PowerAiSecretStore.ENCRYPTED_PREFIX)) {
+            return@withContext PowerAiSecretStore.decrypt(stored)
         }
+        val encrypted = runCatching { PowerAiSecretStore.encrypt(stored) }
+            .getOrNull()?.takeIf { it.isNotBlank() } ?: return@withContext ""
+        db.settingsDao().setSetting(
+            com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", encrypted)
+        )
+        stored
     }
 
     suspend fun saveGeminiApiKey(key: String) {
         withContext(Dispatchers.IO) {
-            db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", key.trim()))
+            val normalized = key.trim()
+            val protectedValue = if (normalized.isBlank()) "" else PowerAiSecretStore.encrypt(normalized)
+            db.settingsDao().setSetting(
+                com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", protectedValue)
+            )
         }
     }
 
