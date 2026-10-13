@@ -18,21 +18,17 @@ class OwnerPinSetupManager(
         require(pin.matches(Regex("[0-9]{4,6}"))) {
             "رمز PIN يجب أن يتكون من 4 إلى 6 أرقام"
         }
-        require(userId == INITIAL_OWNER_ID) {
-            "إعداد PIN الأول متاح لحساب المالك الأول فقط"
-        }
-
         return db.withTransaction {
             val owner = db.userDao().getUserById(userId)
-                ?: throw IllegalStateException("حساب المالك الأول غير موجود")
+                ?: throw IllegalStateException("حساب المالك المطلوب غير موجود")
             check(owner.role == UserRole.OWNER && owner.isActive) {
-                "حساب المالك الأول غير نشط أو لا يملك صلاحية المالك"
+                "إعداد PIN الأول متاح لحساب مالك نشط فقط"
             }
             check(owner.pinHash.isBlank() && owner.pinSalt.isBlank()) {
                 "تم إعداد PIN لهذا الحساب مسبقًا؛ استخدم PIN الحالي لتسجيل الدخول"
             }
             check(db.userDao().countActiveOwners() == 1) {
-                "تعذر تحديد حساب مالك أول وحيد؛ راجع حسابات المستخدمين"
+                "تعذر إعداد PIN الأول: يجب وجود حساب مالك نشط واحد فقط"
             }
 
             val hash = passwordHasher.hash(pin)

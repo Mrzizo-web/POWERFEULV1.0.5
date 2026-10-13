@@ -76,11 +76,41 @@ class OwnerPinSetupManagerAndroidTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { manager.setInitialPin(OwnerPinSetupManager.INITIAL_OWNER_ID, "12ab") }
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { manager.setInitialPin("some-other-user", "4826") }
+        db.userDao().insertUser(
+            UserEntity(
+                id = "pin-setup-cashier",
+                name = "كاشير اختبار",
+                username = "pin_setup_cashier",
+                role = DomainUserRole.CASHIER,
+                pinHash = "",
+                pinSalt = ""
+            )
+        )
+        assertThrows(IllegalStateException::class.java) {
+            runBlocking { manager.setInitialPin("pin-setup-cashier", "4826") }
         }
         val owner = db.userDao().getUserById(OwnerPinSetupManager.INITIAL_OWNER_ID)!!
         assertTrue(owner.pinHash.isBlank())
         assertTrue(owner.pinSalt.isBlank())
     }
+    @Test
+    fun migratedOwnerWithDifferentLegacyIdCanChooseFirstPin() = runBlocking {
+        db.userDao().deleteUserById(OwnerPinSetupManager.INITIAL_OWNER_ID)
+        val legacyOwner = UserEntity(
+            id = "legacy-v1-owner-id",
+            name = "مالك مُرحّل",
+            username = "legacy_owner",
+            role = DomainUserRole.OWNER,
+            isActive = true,
+            pinHash = "",
+            pinSalt = ""
+        )
+        db.userDao().insertUser(legacyOwner)
+
+        val updated = OwnerPinSetupManager(db).setInitialPin(legacyOwner.id, "7418")
+        assertTrue(PasswordHasher.DEFAULT.verify("7418", updated.pinSalt, updated.pinHash))
+        assertFalse(PasswordHasher.DEFAULT.verify("7419", updated.pinSalt, updated.pinHash))
+        assertTrue(updated.pinSalt.isNotBlank())
+    }
+
 }

@@ -125,7 +125,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     phone = it.phone,
                     isLocked = isLocked,
                     remainingLockSeconds = remainingSec,
-                    requiresPinSetup = it.id == OwnerPinSetupManager.INITIAL_OWNER_ID &&
+                    requiresPinSetup = it.role == UserRole.OWNER &&
                         it.pinHash.isBlank() && it.pinSalt.isBlank()
                 )
             }
@@ -218,7 +218,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             if (user.pinHash.isBlank() && user.pinSalt.isBlank()) {
-                if (user.id != OwnerPinSetupManager.INITIAL_OWNER_ID || user.role != UserRole.OWNER) {
+                if (user.role != UserRole.OWNER) {
                     loginErrorMessage.value = "بيانات PIN غير مهيأة لهذا المستخدم. اطلب من المالك إصلاح الحساب."
                     return@launch
                 }
