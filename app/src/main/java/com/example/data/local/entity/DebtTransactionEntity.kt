@@ -13,6 +13,8 @@ data class DebtTransactionEntity(
     val type: String, // SALE, PAYMENT, ADJUSTMENT
     val amount: Double,
     val balanceAfter: Double,
+    val balanceBefore: Double = 0.0,
+    val shiftId: String = "",
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
     val referenceId: String = "",
     val notes: String = "",

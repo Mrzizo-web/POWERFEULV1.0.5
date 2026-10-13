@@ -131,3 +131,28 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         )
     }
 }
+
+
+/**
+ * Version 5 adds explicit before/after context to debt settlements and separate
+ * shift totals for debt collections. Existing financial rows are preserved.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE debt_transactions ADD COLUMN balanceBefore REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE debt_transactions ADD COLUMN shiftId TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE shifts ADD COLUMN totalCashDebtPayments REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE shifts ADD COLUMN totalWalletDebtPayments REAL NOT NULL DEFAULT 0.0")
+        db.execSQL(
+            """
+            UPDATE debt_transactions
+            SET balanceBefore = CASE
+                WHEN type = 'SALE' THEN balanceAfter - amount
+                WHEN type = 'PAYMENT' THEN balanceAfter + amount
+                WHEN type = 'VOID' THEN balanceAfter - amount
+                ELSE balanceAfter
+            END
+            """.trimIndent()
+        )
+    }
+}

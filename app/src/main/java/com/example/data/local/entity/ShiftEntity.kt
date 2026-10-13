@@ -18,6 +18,8 @@ data class ShiftEntity(
     val totalWalletSales: Double = 0.0,
     val totalDebtSales: Double = 0.0,
     val totalExpensesCash: Double = 0.0,
+    val totalCashDebtPayments: Double = 0.0,
+    val totalWalletDebtPayments: Double = 0.0,
     val expectedCash: Double = 0.0,
     val actualCash: Double = 0.0,
     val discrepancyAmount: Double = 0.0,

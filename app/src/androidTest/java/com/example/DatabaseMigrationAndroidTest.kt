@@ -18,6 +18,7 @@ import com.example.data.local.entity.WalletTransactionEntity
 import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
 import com.example.data.local.migration.MIGRATION_3_4
+import com.example.data.local.migration.MIGRATION_4_5
 import com.example.domain.model.InventoryTxType
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.ShiftStatus
@@ -31,7 +32,7 @@ import java.util.UUID
 
 class DatabaseMigrationAndroidTest {
     @Test
-    fun versionTwoToFourMigrationPreservesBusinessDataAndDeduplicatesEventIds() = runBlocking {
+    fun versionTwoToFiveMigrationPreservesBusinessDataAndDeduplicatesEventIds() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val dbName = "migration-check-" + UUID.randomUUID().toString() + ".db"
         val oldDb = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
@@ -157,6 +158,10 @@ class DatabaseMigrationAndroidTest {
         )
         raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
         raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
+        raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
+        raw.execSQL("ALTER TABLE shifts DROP COLUMN totalCashDebtPayments")
         raw.execSQL(
             """
             INSERT INTO wallet_transactions (
@@ -174,7 +179,7 @@ class DatabaseMigrationAndroidTest {
         raw.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
