@@ -15,6 +15,10 @@ interface GatewayQueueDao {
     @Query("SELECT * FROM gateway_offline_queue WHERE status IN ('PENDING', 'RETRYING') ORDER BY createdAt ASC")
     suspend fun getPendingQueueItemsSync(): List<GatewayQueueEntity>
 
+    /** Manual retry can recover terminal FAILED rows after configuration is fixed. */
+    @Query("SELECT * FROM gateway_offline_queue WHERE status IN ('PENDING', 'RETRYING', 'FAILED') ORDER BY createdAt ASC")
+    suspend fun getManuallyRetryableItemsSync(): List<GatewayQueueEntity>
+
     @Query("SELECT COUNT(*) FROM gateway_offline_queue WHERE status IN ('PENDING', 'RETRYING')")
     fun getPendingCount(): Flow<Int>
 
