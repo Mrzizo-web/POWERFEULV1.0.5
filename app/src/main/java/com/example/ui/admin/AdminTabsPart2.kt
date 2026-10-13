@@ -939,34 +939,132 @@ fun AdminEmployeesTab(
 @Composable
 fun AdminReportsTab(
     sales: List<SaleEntity>,
-    expenses: List<ExpenseEntity>
+    expenses: List<ExpenseEntity>,
+    saleItems: List<SaleItemEntity> = emptyList()
 ) {
-    val totalSales = sales.sumOf { it.netAmount }
-    val totalExpenses = expenses.sumOf { it.amount }
-    val netProfit = totalSales - totalExpenses
+    var selectedPeriod by remember { mutableStateOf(com.example.data.engine.ReportPeriod.ALL) }
+    var periodMenuExpanded by remember { mutableStateOf(false) }
+    val report = remember(sales, expenses, saleItems, selectedPeriod) {
+        com.example.data.engine.ReportCalculator.calculate(
+            sales = sales,
+            expenses = expenses,
+            saleItems = saleItems,
+            period = selectedPeriod,
+            nowMillis = System.currentTimeMillis()
+        )
+    }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         Text("التقارير المالية والأرباح", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { periodMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("الفترة: ${selectedPeriod.label}")
+            }
+            DropdownMenu(expanded = periodMenuExpanded, onDismissRequest = { periodMenuExpanded = false }) {
+                com.example.data.engine.ReportPeriod.values().forEach { period ->
+                    DropdownMenuItem(
+                        text = { Text(period.label) },
+                        onClick = { selectedPeriod = period; periodMenuExpanded = false }
+                    )
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ReportMetricCard("المبيعات الصافية", report.totalSales, Color(0xFF2E7D32), Modifier.weight(1f))
+            ReportMetricCard("تكلفة المواد المباعة", report.costOfGoods, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            ReportMetricCard("الربح الإجمالي", report.grossProfit, MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+            ReportMetricCard("المصروفات", report.totalExpenses, MaterialTheme.colorScheme.error, Modifier.weight(1f))
+        }
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("صافي الربح", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text(
+                    "${report.netProfit} ريال",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    color = if (report.netProfit >= 0.0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                )
+                Text("عدد الفواتير غير الملغاة: ${report.saleCount}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (report.invalidRecordCount > 0) {
+                    Text(
+                        "تحذير: تم استبعاد ${report.invalidRecordCount} سجلًا يحتوي مبلغًا أو تكلفة غير صالحة.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("المبيعات حسب طريقة الدفع", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                com.example.domain.model.PaymentMethod.values().forEach { method ->
+                    val amount = report.salesByPaymentMethod[method] ?: 0.0
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(method.titleAr, fontSize = 13.sp)
+                        Text("$" + amount + " ريال", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("الربحية حسب المنتج", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                if (report.products.isEmpty()) {
+                    Text("لا توجد عناصر مبيعات ضمن الفترة المحددة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("المنتج / الكمية", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1.3f))
+                        Text("المبيعات", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text("التكلفة", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text("الربح", fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    }
+                    Divider()
+                    report.products.take(20).forEach { line ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(modifier = Modifier.weight(1.3f)) {
+                                Text(line.productName, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text("الكمية: ${line.quantity}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text(line.netSales.toString(), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                            Text(line.costOfGoods.toString(), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                            Text(
+                                line.profit.toString(),
+                                fontSize = 11.sp,
+                                modifier = Modifier.weight(1f),
+                                color = if (line.profit >= 0.0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    if (report.products.size > 20) {
+                        Text("يُعرض أعلى 20 منتجًا حسب المبيعات.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        Text(
+            "طريقة الحساب: الربح الإجمالي = المبيعات الصافية − تكلفة المواد المباعة. صافي الربح = الربح الإجمالي − المصروفات. الفواتير الملغاة مستبعدة، وتكلفة كل فاتورة مأخوذة من لقطة التكلفة المحفوظة وقت البيع.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("إجمالي المبيعات", fontSize = 12.sp)
-                    Text("$totalSales ريال", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF2E7D32))
-                }
-            }
-            Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("إجمالي المصروفات", fontSize = 12.sp)
-                    Text("$totalExpenses ريال", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.error)
-                }
-            }
-            Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("صافي الربح", fontSize = 12.sp)
-                    Text("$netProfit ريال", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+@Composable
+private fun ReportMetricCard(
+    label: String,
+    value: Double,
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(modifier = modifier, shape = RoundedCornerShape(12.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, fontSize = 12.sp)
+            Text("$" + value + " ريال", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tint)
         }
     }
 }

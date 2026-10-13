@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
                     val eligibleDebtCustomers by viewModel.eligibleDebtCustomers.collectAsStateWithLifecycle()
                     val allShifts by viewModel.allShifts.collectAsStateWithLifecycle()
                     val sales by viewModel.sales.collectAsStateWithLifecycle()
+                    val saleItems by viewModel.saleItems.collectAsStateWithLifecycle()
                     val expenses by viewModel.expenses.collectAsStateWithLifecycle()
                     val auditLogs by viewModel.auditLogs.collectAsStateWithLifecycle()
                     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
@@ -165,6 +166,7 @@ class MainActivity : ComponentActivity() {
                                             recipes = recipes,
                                             mixtures = mixtures,
                                             sales = sales,
+                                            saleItems = saleItems,
                                             purchases = purchases,
                                             suppliers = suppliers,
                                             customers = customers,

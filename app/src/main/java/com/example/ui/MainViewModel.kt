@@ -177,6 +177,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val sales: StateFlow<List<SaleEntity>> = db.saleDao().getAllSales()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val saleItems: StateFlow<List<SaleItemEntity>> = db.saleDao().getAllSaleItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val expenses: StateFlow<List<ExpenseEntity>> = db.expenseDao().getAllExpenses()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 

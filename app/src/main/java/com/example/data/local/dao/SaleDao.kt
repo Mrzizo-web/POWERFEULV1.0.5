@@ -34,6 +34,9 @@ interface SaleDao {
     @Query("SELECT * FROM sale_items WHERE saleId = :saleId")
     fun getSaleItems(saleId: String): Flow<List<SaleItemEntity>>
 
+    @Query("SELECT * FROM sale_items ORDER BY productName ASC")
+    fun getAllSaleItems(): Flow<List<SaleItemEntity>>
+
     @Query("SELECT * FROM sale_items WHERE saleId = :saleId")
     suspend fun getSaleItemsSync(saleId: String): List<SaleItemEntity>
 }

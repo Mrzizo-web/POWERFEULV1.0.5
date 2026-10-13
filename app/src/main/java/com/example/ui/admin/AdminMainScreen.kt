@@ -31,6 +31,7 @@ fun AdminMainScreen(
     recipes: List<RecipeEntity>,
     mixtures: List<MixtureEntity> = emptyList(),
     sales: List<SaleEntity>,
+    saleItems: List<SaleItemEntity> = emptyList(),
     purchases: List<PurchaseEntity>,
     suppliers: List<SupplierEntity>,
     customers: List<CustomerEntity>,
@@ -224,7 +225,7 @@ fun AdminMainScreen(
                             UserRole.values().filter { it != UserRole.OWNER }
                         }
                     )
-                    AdminTab.REPORTS -> AdminReportsTab(sales, expenses)
+                    AdminTab.REPORTS -> AdminReportsTab(sales, expenses, saleItems)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
                     AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting, autoLockMinutes)
                 }
