@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
+import com.example.data.engine.NewPurchaseItem
 import com.example.domain.model.UserRole
 import com.example.domain.model.WalletTransferStatus
 import com.example.security.AppPermission
@@ -47,6 +48,8 @@ fun AdminMainScreen(
     backupStatusMessage: String?,
     onBack: () -> Unit,
     onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
+    onCreatePurchase: (supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String) -> Unit,
+    onAddSupplier: (name: String, phone: String, address: String, notes: String) -> Unit,
     onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
     onAddCustomer: (name: String, phone: String, limit: Double, allowDebt: Boolean) -> Unit = { _, _, _, _ -> },
     onAddExpense: (title: String, amount: Double, category: String, paidTo: String, notes: String) -> Unit = { _, _, _, _, _ -> },
@@ -159,7 +162,13 @@ fun AdminMainScreen(
                     AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe, mixtures)
                     AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
                     AdminTab.SALES -> AdminSalesTab(sales, onVoidSale)
-                    AdminTab.PURCHASES -> AdminPurchasesTab(purchases, suppliers)
+                    AdminTab.PURCHASES -> AdminPurchasesTab(
+                        purchases = purchases,
+                        suppliers = suppliers,
+                        rawMaterials = rawMaterials,
+                        onCreatePurchase = onCreatePurchase,
+                        onAddSupplier = onAddSupplier
+                    )
                     AdminTab.DEBTS -> AdminDebtsTab(customers, onAddCustomer)
                     AdminTab.EXPENSES -> AdminExpensesTab(expenses, onAddExpense)
                     AdminTab.SHIFTS -> AdminShiftsTab(shifts)
