@@ -130,7 +130,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isLocked = isLocked,
                     remainingLockSeconds = remainingSec,
                     requiresPinSetup = it.role == UserRole.OWNER &&
-                        it.pinHash.isBlank() && it.pinSalt.isBlank()
+                        it.pinHash.isBlank() && it.pinSalt.isBlank(),
+                    isRecoveryAccount = !it.isActive
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
