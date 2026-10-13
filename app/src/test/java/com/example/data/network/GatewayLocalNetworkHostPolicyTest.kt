@@ -21,7 +21,8 @@ class GatewayLocalNetworkHostPolicyTest {
         listOf(
             "8.8.8.8", "1.1.1.1", "172.32.0.1", "192.167.1.10",
             "10.0.0.256", "127.attacker.example", "127.0.0.1.attacker.example",
-            "127.evil", "notlocalhost.example", "http://192.168.1.10", ""
+            "127.evil", "notlocalhost.example", "http://192.168.1.10",
+            "fd:not-an-ip", "fdnotipv6:aa:bb", "１２７.０.０.１", ""
         ).forEach { host ->
             assertFalse("Expected invalid/public host to be rejected: $host",
                 GatewayLocalNetworkHostPolicy.isAllowedCleartextHost(host))
