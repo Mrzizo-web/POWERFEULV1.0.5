@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.engine.*
@@ -14,6 +15,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -915,30 +918,89 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun exportSalesCsv() {
+    fun exportSalesCsv(uri: Uri) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير المبيعات")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val path = backupRestoreEngine.exportSalesCsv()
-                backupStatusMessage.value = "تم تصدير ملف المبيعات بنجاح في: $path"
-                snackbarMessage.value = "تم تصدير ملف المبيعات CSV"
+                val source = File(path)
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف التصدير للكتابة")
+                source.inputStream().use { input ->
+                    output.use { stream -> input.copyTo(stream) }
+                }
+                backupStatusMessage.value = "تم حفظ ملف المبيعات CSV في الموقع الذي اخترته"
+                snackbarMessage.value = "تم تصدير سجل المبيعات بنجاح"
             } catch (e: Exception) {
-                backupStatusMessage.value = "فشل التصدير: ${e.message}"
+                backupStatusMessage.value = "فشل تصدير المبيعات: ${e.localizedMessage ?: "خطأ غير معروف"}"
             }
         }
     }
 
-    fun createBackupJson() {
+    fun exportInventoryCsv(uri: Uri) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير المخزون")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val path = backupRestoreEngine.exportInventoryCsv()
+                val source = File(path)
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف التصدير للكتابة")
+                source.inputStream().use { input ->
+                    output.use { stream -> input.copyTo(stream) }
+                }
+                backupStatusMessage.value = "تم حفظ ملف المخزون CSV في الموقع الذي اخترته"
+                snackbarMessage.value = "تم تصدير المخزون بنجاح"
+            } catch (e: Exception) {
+                backupStatusMessage.value = "فشل تصدير المخزون: ${e.localizedMessage ?: "خطأ غير معروف"}"
+            }
+        }
+    }
+
+    fun createBackup(uri: Uri, password: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.BACKUP_DATA, "إنشاء نسخة احتياطية")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val path = backupRestoreEngine.createFullBackupJson(user.id, user.name)
-                backupStatusMessage.value = "تم إنشاء النسخة الاحتياطية بنجاح في: $path"
+                val bytes = backupRestoreEngine.createFullBackupBytes(user.id, user.name, password)
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف النسخة الاحتياطية للكتابة")
+                output.use { it.write(bytes) }
+                backupStatusMessage.value = "تم إنشاء النسخة الاحتياطية المشفّرة وحفظها في الموقع الذي اخترته"
                 snackbarMessage.value = "تم إنشاء النسخة الاحتياطية الكاملة بنجاح"
             } catch (e: Exception) {
-                backupStatusMessage.value = "فشل النسخ الاحتياطي: ${e.message}"
+                backupStatusMessage.value = "فشل النسخ الاحتياطي: ${e.localizedMessage ?: "خطأ غير معروف"}"
+            }
+        }
+    }
+
+    fun restoreBackup(uri: Uri, password: String) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "استعادة النسخة الاحتياطية")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val input = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?: throw IllegalStateException("تعذر فتح ملف النسخة الاحتياطية")
+                val bytes = ByteArrayOutputStream()
+                input.use { stream ->
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = stream.read(buffer)
+                        if (count < 0) break
+                        require(bytes.size().toLong() + count <= BackupRestoreEngine.MAX_BACKUP_BYTES) {
+                            "حجم ملف النسخة الاحتياطية أكبر من الحد المسموح"
+                        }
+                        bytes.write(buffer, 0, count)
+                    }
+                }
+                val tableCount = backupRestoreEngine.restoreFullBackup(bytes.toByteArray(), password, user.id)
+                withContext(Dispatchers.Main) {
+                    backupStatusMessage.value = "تمت استعادة النسخة بنجاح ($tableCount جداول). سجّل الدخول مجددًا."
+                    logout()
+                }
+            } catch (e: Exception) {
+                backupStatusMessage.value = "فشلت الاستعادة ولم تُعتمد البيانات: ${e.localizedMessage ?: "خطأ غير معروف"}"
             }
         }
     }
