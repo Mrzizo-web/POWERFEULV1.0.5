@@ -8,5 +8,6 @@ data class UserProfile(
     val phone: String,
     val isLocked: Boolean,
     val remainingLockSeconds: Long,
-    val requiresPinSetup: Boolean = false
+    val requiresPinSetup: Boolean = false,
+    val isRecoveryAccount: Boolean = false
 )
