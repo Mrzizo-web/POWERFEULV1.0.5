@@ -4,10 +4,15 @@ import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.GatewayQueueEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -45,4 +50,35 @@ class GatewayQueueClaimAndroidTest {
         assertEquals(1, dao.recoverInProgressItems(2000L))
         assertEquals(1, dao.claimItem(item.id, 2001L))
     }
+    @Test
+    fun itemWithoutEndpointIsNotMarkedCompleted() = runBlocking {
+        val dao = db.gatewayQueueDao()
+        val item = GatewayQueueEntity(
+            id = "missing-endpoint",
+            type = "OUTGOING_SYNC",
+            payload = "{}",
+            targetEndpoint = "",
+            nextAttemptAt = 0L
+        )
+        dao.insertItem(item)
+
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val engine = com.example.data.engine.GatewaySyncEngine(
+            db,
+            scope,
+            autoStartRetry = false
+        )
+        try {
+            engine.retryAllNow()
+            val stored = dao.getAllQueueItems().first().single()
+            assertFalse("Missing endpoint must never be reported as completed", stored.status == "COMPLETED")
+            assertEquals("RETRYING", stored.status)
+            assertEquals(1, stored.retryCount)
+            assertTrue(stored.errorMessage.contains("not configured"))
+        } finally {
+            engine.stopPeriodicRetryLoop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
 }

@@ -102,7 +102,9 @@ class GatewaySyncEngine(
         val claimedItem = item.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
 
         if (item.targetEndpoint.isBlank()) {
-            queueDao.updateItem(claimedItem.copy(status = "COMPLETED", lastAttemptAt = System.currentTimeMillis()))
+            // A missing destination is not a successful delivery. Keep the record
+            // in the retry/error queue so the UI cannot report silent success.
+            handleFailure(claimedItem, "Endpoint URL is not configured; item was not transmitted")
             return
         }
 
