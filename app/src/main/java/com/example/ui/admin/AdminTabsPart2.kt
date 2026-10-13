@@ -1,6 +1,8 @@
 package com.example.ui.admin
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
+import com.example.data.engine.NewPurchaseItem
 import com.example.domain.model.UserRole
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -150,27 +153,367 @@ fun AdminInventoryTab(
     }
 }
 
+private data class PurchaseLineDraft(
+    val materialId: String,
+    val quantityText: String = "",
+    val unitPriceText: String = ""
+)
+
 @Composable
 fun AdminPurchasesTab(
     purchases: List<PurchaseEntity>,
-    suppliers: List<SupplierEntity>
+    suppliers: List<SupplierEntity>,
+    rawMaterials: List<RawMaterialEntity>,
+    onCreatePurchase: (supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String) -> Unit,
+    onAddSupplier: (name: String, phone: String, address: String, notes: String) -> Unit
 ) {
+    var showPurchaseDialog by remember { mutableStateOf(false) }
+    var showSupplierDialog by remember { mutableStateOf(false) }
+    var supplierMenuExpanded by remember { mutableStateOf(false) }
+    var invoiceNumber by remember { mutableStateOf("") }
+    var purchaseNotes by remember { mutableStateOf("") }
+    var selectedSupplierId by remember { mutableStateOf("") }
+    var purchaseError by remember { mutableStateOf<String?>(null) }
+    var purchaseLines by remember { mutableStateOf(listOf<PurchaseLineDraft>()) }
+
+    var supplierName by remember { mutableStateOf("") }
+    var supplierPhone by remember { mutableStateOf("") }
+    var supplierAddress by remember { mutableStateOf("") }
+    var supplierNotes by remember { mutableStateOf("") }
+    var supplierError by remember { mutableStateOf<String?>(null) }
+
+    val activeSuppliers = suppliers.filter { it.isActive }
+    val selectedSupplier = activeSuppliers.firstOrNull { it.id == selectedSupplierId }
+    val totalPreview = purchaseLines.sumOf { line ->
+        val quantity = line.quantityText.toDoubleOrNull() ?: 0.0
+        val unitPrice = line.unitPriceText.toDoubleOrNull() ?: 0.0
+        (quantity * unitPrice).takeIf { it.isFinite() && it > 0.0 } ?: 0.0
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("المشتريات والتوريد (${purchases.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("المشتريات والتوريد (\${purchases.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("تسجيل فاتورة شراء يحدّث المخزون ومتوسط التكلفة داخل معاملة واحدة.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(onClick = {
+                supplierName = ""
+                supplierPhone = ""
+                supplierAddress = ""
+                supplierNotes = ""
+                supplierError = null
+                showSupplierDialog = true
+            }) {
+                Icon(Icons.Default.PersonAdd, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("إضافة مورد")
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Button(
+                onClick = {
+                    invoiceNumber = ""
+                    purchaseNotes = ""
+                    purchaseError = null
+                    selectedSupplierId = activeSuppliers.firstOrNull()?.id.orEmpty()
+                    purchaseLines = listOf(PurchaseLineDraft(rawMaterials.firstOrNull()?.id.orEmpty()))
+                    showPurchaseDialog = true
+                }
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("فاتورة شراء")
+            }
+        }
         Spacer(modifier = Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(purchases) { p ->
+        if (activeSuppliers.isEmpty()) {
+            Text(
+                "أضف بيانات المورد أولًا، ثم أنشئ فاتورة شراء.",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp
+            )
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(purchases, key = { it.id }) { purchase ->
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("فاتورة شراء: ${p.invoiceNumber} • المورد: ${p.supplierName}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("الإجمالي: ${p.totalAmount} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                        Text(
+                            "فاتورة: \${purchase.invoiceNumber}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text("المورد: \${purchase.supplierName}", fontSize = 12.sp)
+                        Text("الإجمالي: \${purchase.totalAmount} ريال", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        if (purchase.notes.isNotBlank()) {
+                            Text(purchase.notes, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showPurchaseDialog) {
+        AlertDialog(
+            onDismissRequest = { showPurchaseDialog = false },
+            title = { Text("تسجيل فاتورة شراء متعددة المواد") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text("المورد", fontWeight = FontWeight.SemiBold)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { supplierMenuExpanded = true },
+                            enabled = activeSuppliers.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(selectedSupplier?.name ?: "اختر المورد")
+                        }
+                        DropdownMenu(
+                            expanded = supplierMenuExpanded,
+                            onDismissRequest = { supplierMenuExpanded = false }
+                        ) {
+                            activeSuppliers.forEach { supplier ->
+                                DropdownMenuItem(
+                                    text = { Text(supplier.name) },
+                                    onClick = {
+                                        selectedSupplierId = supplier.id
+                                        supplierMenuExpanded = false
+                                        purchaseError = null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = invoiceNumber,
+                        onValueChange = { invoiceNumber = it; purchaseError = null },
+                        label = { Text("رقم فاتورة المورد") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Divider()
+                    Text("مواد الفاتورة", fontWeight = FontWeight.SemiBold)
+                    purchaseLines.forEachIndexed { index, line ->
+                        var materialMenuExpanded by remember(index) { mutableStateOf(false) }
+                        val selectedMaterial = rawMaterials.firstOrNull { it.id == line.materialId }
+                        Card(
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        OutlinedButton(
+                                            onClick = { materialMenuExpanded = true },
+                                            enabled = rawMaterials.isNotEmpty(),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(selectedMaterial?.name ?: "اختر المادة الخام")
+                                        }
+                                        DropdownMenu(
+                                            expanded = materialMenuExpanded,
+                                            onDismissRequest = { materialMenuExpanded = false }
+                                        ) {
+                                            rawMaterials.forEach { material ->
+                                                DropdownMenuItem(
+                                                    text = { Text("\${material.name} (\${material.baseUnit})") },
+                                                    onClick = {
+                                                        purchaseLines = purchaseLines.mapIndexed { i, old ->
+                                                            if (i == index) old.copy(materialId = material.id) else old
+                                                        }
+                                                        materialMenuExpanded = false
+                                                        purchaseError = null
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                    IconButton(
+                                        enabled = purchaseLines.size > 1,
+                                        onClick = {
+                                            purchaseLines = purchaseLines.filterIndexed { i, _ -> i != index }
+                                            purchaseError = null
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Delete, contentDescription = "حذف السطر")
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = line.quantityText,
+                                        onValueChange = { value ->
+                                            purchaseLines = purchaseLines.mapIndexed { i, old ->
+                                                if (i == index) old.copy(quantityText = value) else old
+                                            }
+                                            purchaseError = null
+                                        },
+                                        label = { Text("الكمية (\${selectedMaterial?.baseUnit ?: "الوحدة"})") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = line.unitPriceText,
+                                        onValueChange = { value ->
+                                            purchaseLines = purchaseLines.mapIndexed { i, old ->
+                                                if (i == index) old.copy(unitPriceText = value) else old
+                                            }
+                                            purchaseError = null
+                                        },
+                                        label = { Text("سعر الوحدة") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                val qty = line.quantityText.toDoubleOrNull() ?: 0.0
+                                val price = line.unitPriceText.toDoubleOrNull() ?: 0.0
+                                Text(
+                                    "إجمالي السطر: " + ((qty * price).takeIf { it.isFinite() } ?: 0.0) + " ريال",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    OutlinedButton(
+                        enabled = rawMaterials.isNotEmpty(),
+                        onClick = {
+                            purchaseLines = purchaseLines + PurchaseLineDraft(rawMaterials.first().id)
+                            purchaseError = null
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("إضافة مادة أخرى")
+                    }
+                    OutlinedTextField(
+                        value = purchaseNotes,
+                        onValueChange = { purchaseNotes = it },
+                        label = { Text("ملاحظات الفاتورة (اختياري)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("إجمالي الفاتورة: $totalPreview ريال", fontWeight = FontWeight.Bold)
+                    if (purchaseError != null) {
+                        Text(purchaseError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val supplier = activeSuppliers.firstOrNull { it.id == selectedSupplierId }
+                    val lines = purchaseLines.mapNotNull { line ->
+                        val material = rawMaterials.firstOrNull { it.id == line.materialId }
+                        val quantity = line.quantityText.toDoubleOrNull()
+                        val unitPrice = line.unitPriceText.toDoubleOrNull()
+                        if (material == null || quantity == null || unitPrice == null ||
+                            !quantity.isFinite() || quantity <= 0.0 ||
+                            !unitPrice.isFinite() || unitPrice < 0.0
+                        ) null else NewPurchaseItem(
+                            rawMaterialId = material.id,
+                            rawMaterialName = material.name,
+                            quantity = quantity,
+                            unit = material.baseUnit,
+                            unitPrice = unitPrice
+                        )
+                    }
+                    when {
+                        supplier == null -> purchaseError = "اختر موردًا نشطًا"
+                        invoiceNumber.isBlank() -> purchaseError = "رقم فاتورة المورد مطلوب"
+                        rawMaterials.isEmpty() -> purchaseError = "أضف المواد الخام أولًا"
+                        purchaseLines.isEmpty() -> purchaseError = "أضف مادة واحدة على الأقل"
+                        lines.size != purchaseLines.size -> purchaseError = "راجع الكميات وأسعار الوحدات؛ الكمية أكبر من صفر والسعر غير سالب"
+                        else -> {
+                            onCreatePurchase(supplier.id, supplier.name, invoiceNumber.trim(), lines, purchaseNotes.trim())
+                            showPurchaseDialog = false
+                        }
+                    }
+                }) { Text("حفظ الفاتورة وتحديث المخزون") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPurchaseDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    if (showSupplierDialog) {
+        AlertDialog(
+            onDismissRequest = { showSupplierDialog = false },
+            title = { Text("إضافة مورد") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = supplierName,
+                        onValueChange = { supplierName = it; supplierError = null },
+                        label = { Text("اسم المورد") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = supplierPhone,
+                        onValueChange = { supplierPhone = it },
+                        label = { Text("رقم الهاتف (اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = supplierAddress,
+                        onValueChange = { supplierAddress = it },
+                        label = { Text("العنوان (اختياري)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = supplierNotes,
+                        onValueChange = { supplierNotes = it },
+                        label = { Text("ملاحظات (اختياري)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (supplierError != null) {
+                        Text(supplierError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (supplierName.isBlank()) {
+                        supplierError = "اسم المورد مطلوب"
+                    } else if (suppliers.any { it.name.trim().equals(supplierName.trim(), ignoreCase = true) }) {
+                        supplierError = "يوجد مورد بهذا الاسم بالفعل"
+                    } else {
+                        onAddSupplier(supplierName.trim(), supplierPhone.trim(), supplierAddress.trim(), supplierNotes.trim())
+                        showSupplierDialog = false
+                        supplierName = ""
+                        supplierPhone = ""
+                        supplierAddress = ""
+                        supplierNotes = ""
+                    }
+                }) { Text("حفظ المورد") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSupplierDialog = false }) { Text("إلغاء") }
+            }
+        )
     }
 }
 
