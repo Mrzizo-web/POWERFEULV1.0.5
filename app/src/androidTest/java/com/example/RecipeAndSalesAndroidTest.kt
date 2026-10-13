@@ -576,4 +576,78 @@ class RecipeAndSalesAndroidTest {
     }
 
 
+    @Test
+    fun saleRecalculatesRecipeCostAfterRawMaterialPriceChangesAndKeepsHistoricalSnapshot() = runBlocking {
+        val material = RawMaterialEntity(
+            id = "live-cost-material",
+            name = "موز",
+            baseUnit = "g",
+            currentStock = 1000.0,
+            avgCostPerUnit = 0.1,
+            lastPurchasePrice = 0.1
+        )
+        db.rawMaterialDao().insertRawMaterial(material)
+
+        // Keep this cart object stale on purpose: RecipeManager will update the
+        // persisted product cost, while the cart still holds the original object.
+        val staleProduct = ProductEntity(
+            id = "live-cost-product",
+            name = "منتج تتغير تكلفته",
+            categoryId = "cat-test",
+            price = 500.0,
+            costPrice = 777.0
+        )
+        db.productDao().insertProduct(staleProduct)
+        val recipeManager = RecipeManager(db)
+        val originalRecipe = recipeManager.saveRecipe(
+            name = "وصفة موز",
+            productId = staleProduct.id,
+            items = listOf(
+                RecipeItemEntity(
+                    recipeId = "",
+                    rawMaterialId = material.id,
+                    name = material.name,
+                    amount = 100.0,
+                    quantity = 100.0,
+                    unit = "g"
+                )
+            ),
+            notes = "اختبار تغير سعر المادة الخام",
+            user = testUser
+        )
+        assertEquals(10.0, originalRecipe.calculatedCost, 0.001)
+
+        // Simulate a supplier price update after the recipe was first saved.
+        db.rawMaterialDao().updateRawMaterial(
+            material.copy(avgCostPerUnit = 0.5, lastPurchasePrice = 0.5)
+        )
+
+        val result = salesEngine.executeSale(
+            shift = testShift,
+            user = testUser,
+            items = listOf(CartItem(product = staleProduct, quantity = 1)),
+            paymentMethod = PaymentMethod.CASH,
+            cashReceived = 500.0
+        )
+        assertTrue("Sale must use live recipe costs", result is SaleResult.Success)
+        val sale = (result as SaleResult.Success).sale
+        val storedItems = db.saleDao().getSaleItemsSync(sale.id)
+        assertEquals(1, storedItems.size)
+        assertEquals(50.0, sale.totalCost, 0.001)
+        assertEquals(50.0, storedItems.single().unitCost, 0.001)
+        assertEquals(50.0, storedItems.single().totalCost, 0.001)
+
+        // Current recipe/product cost is refreshed, but the sale keeps its
+        // immutable cost snapshot even if ingredient prices change again later.
+        assertEquals(50.0, db.recipeDao().getRecipeById(originalRecipe.id)!!.calculatedCost, 0.001)
+        assertEquals(50.0, db.productDao().getProductById(staleProduct.id)!!.costPrice, 0.001)
+
+        db.rawMaterialDao().updateRawMaterial(
+            material.copy(avgCostPerUnit = 0.9, lastPurchasePrice = 0.9, currentStock = 900.0)
+        )
+        assertEquals(50.0, db.saleDao().getSaleById(sale.id)!!.totalCost, 0.001)
+        assertEquals(50.0, db.saleDao().getSaleItemsSync(sale.id).single().unitCost, 0.001)
+    }
+
+
 }
