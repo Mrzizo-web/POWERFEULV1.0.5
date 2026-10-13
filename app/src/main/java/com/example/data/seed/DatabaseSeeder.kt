@@ -34,11 +34,16 @@ object DatabaseSeeder {
         // This only clears exact known legacy defaults; custom credentials are preserved.
         if (existingOwner != null && existingOwner.role == UserRole.OWNER) {
             val knownLegacyPins = listOf("1234", "775152", "775152713")
-            val hasKnownDefault = knownLegacyPins.any { pin ->
+            val hasHashedDefault = knownLegacyPins.any { pin ->
                 existingOwner.pinHash.isNotBlank() &&
                     existingOwner.pinSalt.isNotBlank() &&
                     PasswordHasher.DEFAULT.verify(pin, existingOwner.pinSalt, existingOwner.pinHash)
             }
+            // Older databases may have stored a known default PIN as plaintext with
+            // an empty salt. Clear only these exact legacy defaults; never custom PINs.
+            val hasPlaintextDefault =
+                existingOwner.pinSalt.isBlank() && existingOwner.pinHash in knownLegacyPins
+            val hasKnownDefault = hasHashedDefault || hasPlaintextDefault
             if (hasKnownDefault) {
                 db.userDao().updateUser(
                     existingOwner.copy(
