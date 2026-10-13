@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                     val isGatewayRunning by viewModel.isGatewayRunning.collectAsStateWithLifecycle()
                     val gatewayIp by viewModel.gatewayIp.collectAsStateWithLifecycle()
                     val gatewayPort by viewModel.gatewayPort.collectAsStateWithLifecycle()
+                    val autoLockMinutes by viewModel.autoLockMinutes.collectAsStateWithLifecycle()
 
                     val showStartShiftDialog by viewModel.showStartShiftDialog.collectAsStateWithLifecycle()
                     val showCloseShiftDialog by viewModel.showCloseShiftDialog.collectAsStateWithLifecycle()
@@ -266,7 +267,8 @@ class MainActivity : ComponentActivity() {
                                             insights = aiInsights,
                                             onAskAi = { q -> viewModel.askAi(q) },
                                             onSaveApiKey = { k -> viewModel.saveGeminiApiKey(k) },
-                                            onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) }
+                                            onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) },
+                                            autoLockMinutes = autoLockMinutes
                                         )
                                     }
                                 }

@@ -35,6 +35,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val isGatewayRunning = MutableStateFlow(false)
     val gatewayPort = MutableStateFlow(8080)
     val gatewayIp = MutableStateFlow(com.example.util.NetworkUtils.getLocalIpAddress())
+    val autoLockMinutes = MutableStateFlow(SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES.toString())
 
     val pendingQueue: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.pendingQueue
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -53,6 +54,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 DatabaseSeeder.seedIfNeeded(db)
+                val configuredIdleMinutes = db.settingsDao()
+                    .getSetting("auto_lock_minutes")
+                    ?.toIntOrNull()
+                    ?.takeIf { it in 1..SessionManager.MAX_IDLE_TIMEOUT_MINUTES }
+                    ?: SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES
+                sessionManager.setIdleTimeoutMinutes(configuredIdleMinutes)
+                autoLockMinutes.value = configuredIdleMinutes.toString()
 
             } catch (error: Exception) {
                 withContext(Dispatchers.Main) {
@@ -984,7 +992,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun saveSystemSetting(key: String, value: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (key == "gateway_token") {
+            if (key == "auto_lock_minutes") {
+                val minutes = value.trim().toIntOrNull()
+                if (minutes == null || minutes !in 1..SessionManager.MAX_IDLE_TIMEOUT_MINUTES) {
+                    withContext(Dispatchers.Main) {
+                        snackbarMessage.value = "مدة القفل يجب أن تكون بين 1 و60 دقيقة"
+                    }
+                    return@launch
+                }
+                db.settingsDao().setSetting(
+                    com.example.data.local.entity.CafeteriaSettingEntity(key, minutes.toString())
+                )
+                sessionManager.setIdleTimeoutMinutes(minutes)
+                autoLockMinutes.value = minutes.toString()
+            } else if (key == "gateway_token") {
                 val token = value.trim()
                 if (token.length < com.example.gateway.GatewaySecretStore.MIN_TOKEN_LENGTH) {
                     snackbarMessage.value = "رمز Gateway يجب أن يكون 32 حرفًا على الأقل"
@@ -998,10 +1019,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
             }
-            snackbarMessage.value = "تم حفظ الإعداد بنجاح"
+            withContext(Dispatchers.Main) { snackbarMessage.value = "تم حفظ الإعداد بنجاح" }
         }
     }
-
     suspend fun getSystemSetting(key: String): String? = withContext(Dispatchers.IO) {
         if (key == "gateway_token") {
             com.example.gateway.GatewaySecretStore(getApplication()).getToken()

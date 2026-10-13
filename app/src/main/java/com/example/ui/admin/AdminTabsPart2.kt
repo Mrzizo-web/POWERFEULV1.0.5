@@ -560,11 +560,12 @@ fun AdminAuditLogTab(
 @Composable
 fun AdminSettingsTab(
     users: List<UserEntity>,
-    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> }
+    onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
+    initialAutoLockMinutes: String = "5"
 ) {
     var gymName by remember { mutableStateOf("نادي Power Home Gym") }
     var gatewayPort by remember { mutableStateOf("8080") }
-    var autoLockMinutes by remember { mutableStateOf("2") }
+    var autoLockMinutes by remember(initialAutoLockMinutes) { mutableStateOf(initialAutoLockMinutes) }
     var autoStartGateway by remember { mutableStateOf(true) }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -591,7 +592,7 @@ fun AdminSettingsTab(
                     OutlinedTextField(
                         value = autoLockMinutes,
                         onValueChange = { autoLockMinutes = it },
-                        label = { Text("مدة قفل الجلسة عند عدم النشاط (دقائق)") },
+                        label = { Text("مدة قفل الجلسة عند عدم النشاط (1–60 دقيقة؛ الافتراضي 5)") },
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(
