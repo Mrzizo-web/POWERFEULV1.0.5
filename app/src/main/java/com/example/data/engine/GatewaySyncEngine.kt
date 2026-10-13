@@ -79,13 +79,30 @@ class GatewaySyncEngine(
     }
 
     suspend fun retryNow(itemId: String) = withContext(Dispatchers.IO) {
-        val item = queueDao.getPendingQueueItemsSync().firstOrNull { it.id == itemId }
-        if (item != null) processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
+        val item = queueDao.getManuallyRetryableItemsSync().firstOrNull { it.id == itemId }
+            ?: return@withContext
+        val prepared = item.copy(
+            status = "RETRYING",
+            retryCount = 0,
+            nextAttemptAt = 0L,
+            errorMessage = ""
+        )
+        queueDao.updateItem(prepared)
+        processQueueItem(prepared)
     }
 
     suspend fun retryAllNow() = withContext(Dispatchers.IO) {
-        val pending = queueDao.getPendingQueueItemsSync()
-        for (item in pending) processQueueItem(item.copy(retryCount = 0, nextAttemptAt = 0L))
+        val retryable = queueDao.getManuallyRetryableItemsSync()
+        for (item in retryable) {
+            val prepared = item.copy(
+                status = "RETRYING",
+                retryCount = 0,
+                nextAttemptAt = 0L,
+                errorMessage = ""
+            )
+            queueDao.updateItem(prepared)
+            processQueueItem(prepared)
+        }
     }
 
     suspend fun clearCompleted() = withContext(Dispatchers.IO) {
