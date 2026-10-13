@@ -256,13 +256,21 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.ingestSms(sender, body)
                                             },
-                                            onExportSalesCsv = {
+                                            onExportSalesCsv = { uri ->
                                                 viewModel.onUserActivity()
-                                                viewModel.exportSalesCsv()
+                                                viewModel.exportSalesCsv(uri)
                                             },
-                                            onCreateBackupJson = {
+                                            onExportInventoryCsv = { uri ->
                                                 viewModel.onUserActivity()
-                                                viewModel.createBackupJson()
+                                                viewModel.exportInventoryCsv(uri)
+                                            },
+                                            onCreateBackup = { uri, password ->
+                                                viewModel.onUserActivity()
+                                                viewModel.createBackup(uri, password)
+                                            },
+                                            onRestoreBackup = { uri, password ->
+                                                viewModel.onUserActivity()
+                                                viewModel.restoreBackup(uri, password)
                                             },
                                             insights = aiInsights,
                                             onAskAi = { q -> viewModel.askAi(q) },
