@@ -76,6 +76,38 @@ class GatewayQueueAtomicRetryAndroidTest {
     }
 
     @Test
+    fun staleWorkerSnapshotMustReloadResetRetryCountAfterClaim() = runBlocking {
+        val dao = db.gatewayQueueDao()
+        val original = GatewayQueueEntity(
+            id = "stale-worker-snapshot-test",
+            type = "OUTGOING_SYNC",
+            payload = "{\"version\":1}",
+            status = "RETRYING",
+            retryCount = 4,
+            nextAttemptAt = 500L,
+            errorMessage = "old failure"
+        )
+        dao.insertItem(original)
+
+        // Simulate a worker that already captured an older row snapshot.
+        val staleSnapshot = dao.getManuallyRetryableItemsSync().single()
+        assertEquals(4, staleSnapshot.retryCount)
+
+        // An administrator requests a retry before that worker atomically claims it.
+        assertEquals(1, dao.prepareManualRetry(original.id))
+        assertEquals(1, dao.claimItem(original.id, 700L))
+
+        // The engine must use this freshly loaded row rather than staleSnapshot.
+        val freshClaimed = dao.getQueueItemById(original.id)
+        assertNotNull(freshClaimed)
+        assertEquals("IN_PROGRESS", freshClaimed!!.status)
+        assertEquals(0, freshClaimed.retryCount)
+        assertEquals(0L, freshClaimed.nextAttemptAt)
+        assertTrue(freshClaimed.errorMessage.isEmpty())
+        assertEquals(4, staleSnapshot.retryCount)
+    }
+
+    @Test
     fun manualRetryAtomicallyResetsEligibleFailedRows() = runBlocking {
         val dao = db.gatewayQueueDao()
         val item = GatewayQueueEntity(
