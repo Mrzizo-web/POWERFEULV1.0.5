@@ -21,6 +21,9 @@ interface UserDao {
     @Query("SELECT COUNT(*) FROM users")
     suspend fun countUsers(): Int
 
+    @Query("SELECT COUNT(*) FROM users WHERE isActive = 1")
+    suspend fun countActiveUsers(): Int
+
     @Query("SELECT COUNT(*) FROM users WHERE role = 'OWNER' AND isActive = 1")
     suspend fun countActiveOwners(): Int
 
