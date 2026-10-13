@@ -13,6 +13,18 @@ data class ParsedWalletSms(
 
 enum class WalletDirection { INCOMING, OUTGOING }
 
+private fun normalizeSmsDigits(value: String): String = buildString(value.length) {
+    value.forEach { ch ->
+        append(
+            when (ch) {
+                in '٠'..'٩' -> ('0'.code + ch.code - '٠'.code).toChar()
+                in '۰'..'۹' -> ('0'.code + ch.code - '۰'.code).toChar()
+                else -> ch
+            }
+        )
+    }
+}
+
 interface WalletParser {
     val walletCode: String
     val walletName: String
@@ -32,12 +44,12 @@ class JaibParser : WalletParser {
     )
 
     override fun canParse(sender: String, body: String): Boolean {
-        val text = body.trim()
+        val text = normalizeSmsDigits(body.trim())
         return text.startsWith("اضيف ") || text.startsWith("خصم ")
     }
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        val text = body.trim()
+        val text = normalizeSmsDigits(body.trim())
 
         incoming.matcher(text).takeIf { it.matches() }?.let { match ->
             val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
@@ -64,10 +76,10 @@ class FloosakParser : WalletParser {
     )
 
     override fun canParse(sender: String, body: String): Boolean =
-        body.trim().startsWith("استلمت حوالة من ")
+        normalizeSmsDigits(body.trim()).startsWith("استلمت حوالة من ")
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        val match = incoming.matcher(body.trim())
+        val match = incoming.matcher(normalizeSmsDigits(body.trim()))
         if (!match.matches()) return null
 
         val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
@@ -82,29 +94,36 @@ class JawaliParser : WalletParser {
     override val walletCode = "JAWALI"
     override val walletName = "جوالي"
 
+    // Some operator templates begin with "لقد استلمت" and others with
+    // "استلمت"; support both actual forms without loosening the transaction fields.
     private val purchases = Pattern.compile(
-        """^لقد استلمت\s+(?<currency>\S+)\s+(?<amount>\d+)\s+كقيمة مشتريات بمرجع\s+(?<reference>\d+)\s+من\s+(?<sender>.+)$"""
+        """^(?:لقد\\s+)?استلمت\\s+(?<currency>YER|ر\\.ي)\\s+(?<amount>\\d+(?:[.,]\\d+)?)\\s+كقيمة مشتريات بمرجع\\s+(?<reference>\\d+)\\s+من\\s+(?<sender>.+)$""",
+        Pattern.CASE_INSENSITIVE
     )
     private val directReceipt = Pattern.compile(
-        """^استلمت مبلغ\s+(?<currency>\S+)\s+(?<amount>\d+)\s+من\s+(?<senderId>\d+)\s+رصيدك هو\s+(?<balance>\d+)$"""
+        """^استلمت مبلغ\\s+(?<currency>YER|ر\\.ي)\\s+(?<amount>\\d+(?:[.,]\\d+)?)\\s+من\\s+(?<senderId>\\d+)\\s+رصيدك هو\\s+(?<balance>\\d+(?:[.,]\\d+)?)$""",
+        Pattern.CASE_INSENSITIVE
     )
 
     override fun canParse(sender: String, body: String): Boolean {
-        val text = body.trim()
-        return text.startsWith("لقد استلمت ") || text.startsWith("استلمت مبلغ ")
+        val text = normalizeSmsDigits(body.trim())
+        return text.startsWith("لقد استلمت ") ||
+            text.startsWith("استلمت YER ", ignoreCase = true) ||
+            text.startsWith("استلمت ر.ي ") ||
+            text.startsWith("استلمت مبلغ ")
     }
 
     override fun parse(sender: String, body: String): ParsedWalletSms? {
-        val text = body.trim()
+        val text = normalizeSmsDigits(body.trim())
 
         purchases.matcher(text).takeIf { it.matches() }?.let { match ->
-            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            val amount = match.group("amount")!!.replace(',', '.').toDoubleOrNull() ?: return null
             if (amount <= 0) return null
             return ParsedWalletSms(walletCode, amount, match.group("reference")!!, match.group("sender")!!.trim(), true, WalletDirection.INCOMING)
         }
 
         directReceipt.matcher(text).takeIf { it.matches() }?.let { match ->
-            val amount = match.group("amount")!!.toDoubleOrNull() ?: return null
+            val amount = match.group("amount")!!.replace(',', '.').toDoubleOrNull() ?: return null
             if (amount <= 0) return null
             return ParsedWalletSms(walletCode, amount, "", match.group("senderId")!!, true, WalletDirection.INCOMING)
         }
