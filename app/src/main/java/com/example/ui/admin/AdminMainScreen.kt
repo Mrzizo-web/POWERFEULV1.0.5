@@ -47,7 +47,7 @@ fun AdminMainScreen(
     gatewayPort: Int = 8080,
     backupStatusMessage: String?,
     onBack: () -> Unit,
-    onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
+    onSaveProduct: (ProductEntity) -> Unit,
     onCreatePurchase: (supplierId: String, supplierName: String, invoiceNumber: String, items: List<NewPurchaseItem>, notes: String) -> Unit,
     onAddSupplier: (name: String, phone: String, address: String, notes: String) -> Unit,
     onAddRecipe: (name: String, productId: String, items: List<RecipeItemEntity>, notes: String) -> Unit = { _, _, _, _ -> },
@@ -58,6 +58,7 @@ fun AdminMainScreen(
     onAddRawMaterial: (name: String, unit: String, stock: Double, minStock: Double, cost: Double) -> Unit = { _, _, _, _, _ -> },
     onAddStock: (materialId: String, amount: Double) -> Unit = { _, _ -> },
     onToggleProductActive: (productId: String, active: Boolean) -> Unit = { _, _ -> },
+    onToggleProductAvailability: (productId: String, available: Boolean) -> Unit = { _, _ -> },
     onVoidSale: (saleId: String, reason: String) -> Unit,
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
     onToggleActive: (userId: String, active: Boolean) -> Unit,
@@ -160,7 +161,13 @@ fun AdminMainScreen(
                         modifier = Modifier.padding(24.dp)
                     )
                 } else when (effectiveTab) {
-                    AdminTab.PRODUCTS -> AdminProductsTab(categories, products, onAddProduct, onToggleProductActive)
+                    AdminTab.PRODUCTS -> AdminProductsTab(
+                        categories = categories,
+                        products = products,
+                        onSaveProduct = onSaveProduct,
+                        onToggleProductActive = onToggleProductActive,
+                        onToggleProductAvailability = onToggleProductAvailability
+                    )
                     AdminTab.RECIPES -> AdminRecipesTab(recipes, rawMaterials, products, onAddRecipe, mixtures)
                     AdminTab.INVENTORY -> AdminInventoryTab(rawMaterials, onAddStock, onAddRawMaterial)
                     AdminTab.SALES -> AdminSalesTab(sales, onVoidSale)

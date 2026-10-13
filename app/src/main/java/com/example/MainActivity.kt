@@ -184,13 +184,17 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.navigateTo(AppScreen.POS)
                                             },
-                                            onAddProduct = { name, catId, price, cost ->
+                                            onSaveProduct = { product ->
                                                 viewModel.onUserActivity()
-                                                viewModel.addProduct(name, catId, price, cost)
+                                                viewModel.saveProduct(product)
                                             },
                                             onToggleProductActive = { productId, active ->
                                                 viewModel.onUserActivity()
                                                 viewModel.toggleProductActive(productId, active)
+                                            },
+                                            onToggleProductAvailability = { productId, available ->
+                                                viewModel.onUserActivity()
+                                                viewModel.toggleProductAvailable(productId, available)
                                             },
                                             onCreatePurchase = { supplierId, supplierName, invoiceNumber, items, notes ->
                                                 viewModel.onUserActivity()

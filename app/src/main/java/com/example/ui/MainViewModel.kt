@@ -603,24 +603,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addProduct(name: String, catId: String, price: Double, cost: Double = 0.0) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "إضافة منتج")) return
-        if (name.isBlank() || !price.isFinite() || price <= 0.0 || !cost.isFinite() || cost < 0.0) {
-            snackbarMessage.value = "اسم المنتج والسعر والتكلفة يجب أن تكون بيانات صالحة"
-            return
-        }
-        viewModelScope.launch(Dispatchers.IO) {
-            val prod = ProductEntity(
+        saveProduct(
+            ProductEntity(
                 name = name,
                 categoryId = catId,
                 price = price,
                 costPrice = cost
             )
-            db.productDao().insertProduct(prod)
-            db.auditLogDao().insertLog(
-                AuditLogEntity(userId = user.id, userName = user.name, userRole = user.role.name, action = "إضافة منتج", notes = "تمت إضافة المنتج $name بسعر $price")
-            )
-            snackbarMessage.value = "تمت إضافة المنتج بنجاح"
+        )
+    }
+
+    fun saveProduct(product: ProductEntity) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_PRODUCTS, "حفظ المنتج")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existedBefore = db.productDao().getProductById(product.id) != null
+                ProductManager(db).saveProduct(product, user)
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = if (existedBefore) "تم تحديث المنتج بنجاح" else "تمت إضافة المنتج بنجاح"
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                withContext(Dispatchers.Main) {
+                    snackbarMessage.value = error.message ?: "تعذر حفظ المنتج"
+                }
+            }
         }
     }
 

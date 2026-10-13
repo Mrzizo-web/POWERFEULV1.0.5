@@ -25,14 +25,46 @@ import com.example.data.local.entity.*
 fun AdminProductsTab(
     categories: List<CategoryEntity>,
     products: List<ProductEntity>,
-    onAddProduct: (name: String, catId: String, price: Double, cost: Double) -> Unit,
-    onToggleProductActive: (productId: String, isActive: Boolean) -> Unit = { _, _ -> }
+    onSaveProduct: (ProductEntity) -> Unit,
+    onToggleProductActive: (productId: String, isActive: Boolean) -> Unit,
+    onToggleProductAvailability: (productId: String, isAvailable: Boolean) -> Unit
 ) {
     var showDialog by remember { mutableStateOf(false) }
+    var editingProduct by remember { mutableStateOf<ProductEntity?>(null) }
     var name by remember { mutableStateOf("") }
+    var skuText by remember { mutableStateOf("") }
+    var barcodeText by remember { mutableStateOf("") }
     var priceText by remember { mutableStateOf("") }
     var costText by remember { mutableStateOf("") }
-    var selectedCatId by remember { mutableStateOf(categories.firstOrNull()?.id ?: "") }
+    var minStockText by remember { mutableStateOf("5") }
+    var selectedCatId by remember { mutableStateOf(categories.firstOrNull { it.isActive }?.id ?: "") }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var isAvailable by remember { mutableStateOf(true) }
+    var productError by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+
+    fun openEditor(product: ProductEntity?) {
+        editingProduct = product
+        name = product?.name.orEmpty()
+        skuText = product?.sku.orEmpty()
+        barcodeText = product?.barcode.orEmpty()
+        priceText = product?.price?.toString().orEmpty()
+        costText = product?.costPrice?.toString() ?: "0"
+        minStockText = product?.minStockAlert?.toString() ?: "5"
+        selectedCatId = product?.categoryId ?: categories.firstOrNull { it.isActive }?.id.orEmpty()
+        isAvailable = product?.isAvailable ?: true
+        categoryMenuExpanded = false
+        productError = null
+        showDialog = true
+    }
+
+    val visibleProducts = products.filter { product ->
+        searchQuery.isBlank() ||
+            product.name.contains(searchQuery, ignoreCase = true) ||
+            product.sku.contains(searchQuery, ignoreCase = true) ||
+            product.barcode.contains(searchQuery, ignoreCase = true)
+    }
+    val activeCategories = categories.filter { it.isActive }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -40,35 +72,84 @@ fun AdminProductsTab(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("إدارة المنتجات (${products.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Button(onClick = { showDialog = true }) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("إدارة المنتجات (${products.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("التصنيف والسعر والتكلفة والإتاحة والتنبيه", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(onClick = { openEditor(null) }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("إضافة منتج")
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("بحث بالاسم أو SKU أو الباركود") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(10.dp))
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
-            items(products) { p ->
+            items(visibleProducts, key = { it.id }) { product ->
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(p.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("السعر: ${p.price} ريال • التكلفة: ${p.costPrice} ريال • الحالة: ${if (p.isActive) "نشط (معروض للكاشير)" else "معطل"}", fontSize = 12.sp, color = if (p.isActive) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error)
+                    Column(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(product.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(
+                                    "التصنيف: " + (categories.firstOrNull { it.id == product.categoryId }?.name ?: "غير محدد"),
+                                    fontSize = 12.sp
+                                )
+                            }
+                            IconButton(onClick = { openEditor(product) }) {
+                                Icon(Icons.Default.Edit, contentDescription = "تعديل المنتج")
+                            }
                         }
-                        Switch(
-                            checked = p.isActive,
-                            onCheckedChange = { onToggleProductActive(p.id, it) }
+                        Text(
+                            "السعر: ${product.price} • التكلفة: ${product.costPrice} • SKU: ${product.sku.ifBlank { "—" }}",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (product.barcode.isNotBlank()) {
+                            Text("الباركود: ${product.barcode}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(
+                            if (product.recipeId.isBlank()) "لا توجد وصفة مرتبطة" else "مرتبط بوصفة؛ خصم المكونات من المخزون عند البيع",
+                            fontSize = 12.sp,
+                            color = if (product.recipeId.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (product.isActive) "نشط" else "معطل", fontSize = 12.sp)
+                                Switch(
+                                    checked = product.isActive,
+                                    onCheckedChange = { onToggleProductActive(product.id, it) }
+                                )
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (product.isAvailable) "متاح للبيع" else "غير متاح", fontSize = 12.sp)
+                                Switch(
+                                    checked = product.isAvailable,
+                                    onCheckedChange = { onToggleProductAvailability(product.id, it) }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -78,25 +159,124 @@ fun AdminProductsTab(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text("إضافة منتج جديد") },
+            title = { Text(if (editingProduct == null) "إضافة منتج جديد" else "تعديل المنتج") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("اسم المنتج") }, singleLine = true)
-                    OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("سعر البيع (ريال)") }, singleLine = true)
-                    OutlinedTextField(value = costText, onValueChange = { costText = it }, label = { Text("سعر التكلفة (ريال)") }, singleLine = true)
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it; productError = null },
+                        label = { Text("اسم المنتج") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("التصنيف", fontWeight = FontWeight.SemiBold)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { categoryMenuExpanded = true },
+                            enabled = activeCategories.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(activeCategories.firstOrNull { it.id == selectedCatId }?.name ?: "اختر التصنيف")
+                        }
+                        DropdownMenu(
+                            expanded = categoryMenuExpanded,
+                            onDismissRequest = { categoryMenuExpanded = false }
+                        ) {
+                            activeCategories.forEach { category ->
+                                DropdownMenuItem(
+                                    text = { Text(category.name) },
+                                    onClick = {
+                                        selectedCatId = category.id
+                                        categoryMenuExpanded = false
+                                        productError = null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = priceText,
+                            onValueChange = { priceText = it; productError = null },
+                            label = { Text("سعر البيع") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = costText,
+                            onValueChange = { costText = it; productError = null },
+                            label = { Text("التكلفة") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = skuText,
+                            onValueChange = { skuText = it; productError = null },
+                            label = { Text("SKU (اختياري)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = barcodeText,
+                            onValueChange = { barcodeText = it; productError = null },
+                            label = { Text("الباركود (اختياري)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = minStockText,
+                        onValueChange = { minStockText = it; productError = null },
+                        label = { Text("حد تنبيه المخزون") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = isAvailable, onCheckedChange = { isAvailable = it })
+                        Text("متاح للبيع من شاشة الكاشير")
+                    }
+                    if (productError != null) {
+                        Text(productError!!, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val pr = priceText.toDoubleOrNull() ?: 0.0
-                        val cs = costText.toDoubleOrNull() ?: 0.0
-                        onAddProduct(name, selectedCatId, pr, cs)
-                        showDialog = false
+                Button(onClick = {
+                    val price = priceText.toDoubleOrNull()
+                    val cost = costText.toDoubleOrNull()
+                    val minStock = minStockText.toDoubleOrNull()
+                    val existing = editingProduct
+                    when {
+                        name.isBlank() -> productError = "اسم المنتج مطلوب"
+                        activeCategories.none { it.id == selectedCatId } -> productError = "اختر تصنيفًا نشطًا"
+                        price == null || !price.isFinite() || price <= 0.0 -> productError = "سعر البيع يجب أن يكون موجبًا وصالحًا"
+                        cost == null || !cost.isFinite() || cost < 0.0 -> productError = "التكلفة يجب أن تكون رقمًا صالحًا غير سالب"
+                        minStock == null || !minStock.isFinite() || minStock < 0.0 -> productError = "حد التنبيه يجب أن يكون رقمًا صالحًا غير سالب"
+                        else -> {
+                            val product = (existing ?: ProductEntity(
+                                name = name.trim(),
+                                categoryId = selectedCatId,
+                                price = price
+                            )).copy(
+                                name = name.trim(),
+                                categoryId = selectedCatId,
+                                price = price,
+                                costPrice = cost,
+                                sku = skuText.trim(),
+                                barcode = barcodeText.trim(),
+                                minStockAlert = minStock,
+                                isAvailable = isAvailable
+                            )
+                            onSaveProduct(product)
+                            showDialog = false
+                        }
                     }
-                ) {
-                    Text("حفظ")
-                }
+                }) { Text("حفظ المنتج") }
             },
             dismissButton = {
                 TextButton(onClick = { showDialog = false }) { Text("إلغاء") }
@@ -104,6 +284,7 @@ fun AdminProductsTab(
         )
     }
 }
+
 
 private data class RecipeComponentDraft(
     val sourceId: String,
