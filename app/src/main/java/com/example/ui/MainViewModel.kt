@@ -909,6 +909,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun exportSalesCsv() {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير المبيعات")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val path = backupRestoreEngine.exportSalesCsv()
@@ -922,6 +924,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun createBackupJson() {
         val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "إنشاء نسخة احتياطية")) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val path = backupRestoreEngine.createFullBackupJson(user.id, user.name)
@@ -943,6 +946,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun ingestSms(sender: String, body: String) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "معالجة رسالة محفظة يدويًا")) return
         viewModelScope.launch(Dispatchers.IO) {
             val result = walletMatchingEngine.ingestSms(sender, body)
             when (result) {
@@ -994,6 +999,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun retryQueueItem(id: String) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة عنصر Gateway")) return
         viewModelScope.launch(Dispatchers.IO) {
             gatewaySyncEngine.retryNow(id)
             snackbarMessage.value = "جاري إعادة محاولة إرسال العنصر..."
@@ -1001,6 +1008,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun retryAllQueue() {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة طابور Gateway")) return
         viewModelScope.launch(Dispatchers.IO) {
             gatewaySyncEngine.retryAllNow()
             snackbarMessage.value = "جاري إعادة محاولة جميع عناصر طابور الانتظار..."
@@ -1008,6 +1017,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearCompletedQueue() {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تنظيف طابور Gateway")) return
         viewModelScope.launch(Dispatchers.IO) {
             gatewaySyncEngine.clearCompleted()
             snackbarMessage.value = "تم تنظيف العناصر المكتملة"
