@@ -1024,6 +1024,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun exportCustomersCsv(uri: Uri) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير العملاء")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val source = File(backupRestoreEngine.exportCustomersCsv())
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف تصدير العملاء للكتابة")
+                source.inputStream().use { input -> output.use { stream -> input.copyTo(stream) } }
+                backupStatusMessage.value = "تم حفظ ملف العملاء والديون في الموقع الذي اخترته"
+                snackbarMessage.value = "تم تصدير العملاء بنجاح"
+            } catch (error: Exception) {
+                backupStatusMessage.value = "فشل تصدير العملاء: " + (error.localizedMessage ?: "خطأ غير معروف")
+            }
+        }
+    }
+
+    fun exportExpensesCsv(uri: Uri) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير المصروفات")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val source = File(backupRestoreEngine.exportExpensesCsv())
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف تصدير المصروفات للكتابة")
+                source.inputStream().use { input -> output.use { stream -> input.copyTo(stream) } }
+                backupStatusMessage.value = "تم حفظ ملف المصروفات في الموقع الذي اخترته"
+                snackbarMessage.value = "تم تصدير المصروفات بنجاح"
+            } catch (error: Exception) {
+                backupStatusMessage.value = "فشل تصدير المصروفات: " + (error.localizedMessage ?: "خطأ غير معروف")
+            }
+        }
+    }
+
+    fun exportDebtTransactionsCsv(uri: Uri) {
+        val user = _currentUser.value ?: return
+        if (!requirePermission(user, AppPermission.BACKUP_DATA, "تصدير سجل الديون")) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val source = File(backupRestoreEngine.exportDebtTransactionsCsv())
+                val output = getApplication<Application>().contentResolver.openOutputStream(uri, "wt")
+                    ?: throw IllegalStateException("تعذر فتح ملف تصدير حركات الديون للكتابة")
+                source.inputStream().use { input -> output.use { stream -> input.copyTo(stream) } }
+                backupStatusMessage.value = "تم حفظ ملف حركات الديون والسداد في الموقع الذي اخترته"
+                snackbarMessage.value = "تم تصدير سجل الديون بنجاح"
+            } catch (error: Exception) {
+                backupStatusMessage.value = "فشل تصدير سجل الديون: " + (error.localizedMessage ?: "خطأ غير معروف")
+            }
+        }
+    }
+
     fun createBackup(uri: Uri, password: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.BACKUP_DATA, "إنشاء نسخة احتياطية")) return

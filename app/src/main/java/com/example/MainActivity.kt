@@ -293,6 +293,19 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.exportInventoryCsv(uri)
                                             },
+
+                                            onExportCustomersCsv = { uri ->
+                                                viewModel.onUserActivity()
+                                                viewModel.exportCustomersCsv(uri)
+                                            },
+                                            onExportExpensesCsv = { uri ->
+                                                viewModel.onUserActivity()
+                                                viewModel.exportExpensesCsv(uri)
+                                            },
+                                            onExportDebtTransactionsCsv = { uri ->
+                                                viewModel.onUserActivity()
+                                                viewModel.exportDebtTransactionsCsv(uri)
+                                            },
                                             onCreateBackup = { uri, password ->
                                                 viewModel.onUserActivity()
                                                 viewModel.createBackup(uri, password)

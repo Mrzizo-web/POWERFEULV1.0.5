@@ -6,6 +6,10 @@ import com.example.data.engine.BackupRestoreEngine
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.ProductEntity
 import com.example.data.local.entity.UserEntity
+import com.example.data.local.entity.CustomerEntity
+import com.example.data.local.entity.ExpenseEntity
+import com.example.data.local.entity.DebtTransactionEntity
+import com.example.domain.model.PaymentMethod
 import com.example.domain.model.UserRole
 import com.example.security.PasswordHasher
 import kotlinx.coroutines.runBlocking
@@ -96,4 +100,67 @@ class BackupRestoreEngineAndroidTest {
         assertEquals(250.0, products.single().price, 0.001)
         assertTrue("Owner account must remain available", db.userDao().getUserById(ownerId) != null)
     }
+    @Test
+    fun csvExportsIncludeLiveCustomerExpenseAndDebtRecordsAndExcelFriendlyUtf8() = runBlocking {
+        db.customerDao().insertCustomer(
+            CustomerEntity(
+                id = "csv-customer",
+                name = "عميل, \"اختبار\"",
+                phone = "777000111",
+                creditLimit = 500.0,
+                currentDebt = 125.0,
+                notes = "ملاحظات, فيها فاصلة"
+            )
+        )
+        db.expenseDao().insertExpense(
+            ExpenseEntity(
+                id = "csv-expense",
+                title = "شراء, مواد خام",
+                category = "تشغيلي",
+                amount = 42.5,
+                paidTo = "المورد",
+                paymentMethod = PaymentMethod.CASH,
+                notes = "مصروف اختبار",
+                userId = ownerId,
+                userName = "مالك اختبار"
+            )
+        )
+        db.debtTransactionDao().insertDebtTransaction(
+            DebtTransactionEntity(
+                id = "csv-debt-tx",
+                customerId = "csv-customer",
+                customerName = "عميل, \"اختبار\"",
+                type = "PAYMENT",
+                amount = 25.0,
+                balanceBefore = 150.0,
+                balanceAfter = 125.0,
+                paymentMethod = PaymentMethod.CASH,
+                referenceId = "receipt-42",
+                notes = "سداد جزئي",
+                userId = ownerId,
+                userName = "مالك اختبار"
+            )
+        )
+
+        val customerCsv = java.io.File(engine.exportCustomersCsv()).readText(Charsets.UTF_8)
+        val expenseCsv = java.io.File(engine.exportExpensesCsv()).readText(Charsets.UTF_8)
+        val debtCsv = java.io.File(engine.exportDebtTransactionsCsv()).readText(Charsets.UTF_8)
+
+        assertTrue("Customer CSV should have a UTF-8 BOM", customerCsv.startsWith("\uFEFF"))
+        assertTrue(customerCsv.contains("csv-customer"))
+        assertTrue(customerCsv.contains("125.0"))
+        assertTrue(customerCsv.contains("\"\"اختبار\"\""))
+        assertTrue(customerCsv.contains("ملاحظات, فيها فاصلة"))
+
+        assertTrue("Expense CSV should have a UTF-8 BOM", expenseCsv.startsWith("\uFEFF"))
+        assertTrue(expenseCsv.contains("csv-expense"))
+        assertTrue(expenseCsv.contains("42.5"))
+        assertTrue(expenseCsv.contains("شراء, مواد خام"))
+
+        assertTrue("Debt CSV should have a UTF-8 BOM", debtCsv.startsWith("\uFEFF"))
+        assertTrue(debtCsv.contains("csv-debt-tx"))
+        assertTrue(debtCsv.contains("receipt-42"))
+        assertTrue(debtCsv.contains("سداد جزئي"))
+    }
+
 }

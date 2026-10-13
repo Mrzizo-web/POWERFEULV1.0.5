@@ -37,6 +37,7 @@ class BackupRestoreEngine(
     suspend fun exportSalesCsv(): String = withContext(Dispatchers.IO) {
         val sales = db.saleDao().getAllSales().first()
         val sb = StringBuilder()
+        sb.append(0xFEFF.toChar())
         sb.append("رقم الفاتورة,التاريخ,المستخدم,العميل,طريقة الدفع,الإجمالي,الخصم,الصافي,الحالة\n")
         for (sale in sales) {
             val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ENGLISH).format(Date(sale.createdAt))
@@ -61,6 +62,7 @@ class BackupRestoreEngine(
     suspend fun exportInventoryCsv(): String = withContext(Dispatchers.IO) {
         val materials = db.rawMaterialDao().getAllRawMaterialsSync()
         val sb = StringBuilder()
+        sb.append(0xFEFF.toChar())
         sb.append("SKU,المادة الخام,الوحدة,الرصيد,حد التنبيه,تكلفة الوحدة,آخر سعر شراء,الحالة\n")
         for (material in materials) {
             val status = when {
@@ -82,6 +84,66 @@ class BackupRestoreEngine(
             sb.append(fields.joinToString(",") { csvCell(it) }).append('\n')
         }
         val file = File(context.cacheDir, "inventory_export_" + System.currentTimeMillis() + ".csv")
+        file.writeText(sb.toString(), Charsets.UTF_8)
+        file.absolutePath
+    }
+
+
+    suspend fun exportCustomersCsv(): String = withContext(Dispatchers.IO) {
+        val customers = db.customerDao().getAllCustomers().first()
+        val sb = StringBuilder()
+        sb.append(0xFEFF.toChar())
+        sb.append("معرّف العميل,اسم العميل,الهاتف,سقف الدين,الدين الحالي,السماح بالدين,الحالة,ملاحظات,تاريخ الإنشاء,آخر معاملة\n")
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
+        customers.forEach { customer ->
+            val fields = listOf(
+                customer.id, customer.name, customer.phone,
+                customer.creditLimit.toString(), customer.currentDebt.toString(),
+                customer.allowDebt.toString(), customer.status.name, customer.notes,
+                dateFormat.format(Date(customer.createdAt)),
+                dateFormat.format(Date(customer.lastTransactionDate))
+            )
+            sb.append(fields.joinToString(",") { csvCell(it) }).append('\n')
+        }
+        val file = File(context.cacheDir, "customers_export_" + System.currentTimeMillis() + ".csv")
+        file.writeText(sb.toString(), Charsets.UTF_8)
+        file.absolutePath
+    }
+
+    suspend fun exportExpensesCsv(): String = withContext(Dispatchers.IO) {
+        val expenses = db.expenseDao().getAllExpenses().first()
+        val sb = StringBuilder()
+        sb.append(0xFEFF.toChar())
+        sb.append("معرّف المصروف,التاريخ,معرّف الشفت,البيان,التصنيف,المبلغ,المدفوع له,طريقة الدفع,الملاحظات,اسم المستخدم,معرّف المستخدم\n")
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
+        expenses.forEach { expense ->
+            val fields = listOf(
+                expense.id, dateFormat.format(Date(expense.createdAt)), expense.shiftId,
+                expense.title, expense.category, expense.amount.toString(), expense.paidTo,
+                expense.paymentMethod.name, expense.notes, expense.userName, expense.userId
+            )
+            sb.append(fields.joinToString(",") { csvCell(it) }).append('\n')
+        }
+        val file = File(context.cacheDir, "expenses_export_" + System.currentTimeMillis() + ".csv")
+        file.writeText(sb.toString(), Charsets.UTF_8)
+        file.absolutePath
+    }
+
+    suspend fun exportDebtTransactionsCsv(): String = withContext(Dispatchers.IO) {
+        val transactions = db.debtTransactionDao().getRecentDebtTransactions().first()
+        val sb = StringBuilder()
+        sb.append(0xFEFF.toChar())
+        sb.append("معرّف المعاملة,التاريخ,معرّف العميل,اسم العميل,نوع المعاملة,المبلغ,الرصيد السابق,الرصيد بعد العملية,طريقة الدفع,معرّف الشفت,المرجع,الملاحظات,اسم المستخدم,معرّف المستخدم\n")
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH)
+        transactions.forEach { tx ->
+            val fields = listOf(
+                tx.id, dateFormat.format(Date(tx.createdAt)), tx.customerId, tx.customerName,
+                tx.type, tx.amount.toString(), tx.balanceBefore.toString(), tx.balanceAfter.toString(),
+                tx.paymentMethod.name, tx.shiftId, tx.referenceId, tx.notes, tx.userName, tx.userId
+            )
+            sb.append(fields.joinToString(",") { csvCell(it) }).append('\n')
+        }
+        val file = File(context.cacheDir, "debt_transactions_export_" + System.currentTimeMillis() + ".csv")
         file.writeText(sb.toString(), Charsets.UTF_8)
         file.absolutePath
     }

@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.dp
 fun AdminBackupTab(
     onExportSalesCsv: (Uri) -> Unit,
     onExportInventoryCsv: (Uri) -> Unit,
+    onExportCustomersCsv: (Uri) -> Unit = {},
+    onExportExpensesCsv: (Uri) -> Unit = {},
+    onExportDebtTransactionsCsv: (Uri) -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit,
     onRestoreBackup: (Uri, String) -> Unit,
     backupStatusMessage: String?
@@ -40,6 +43,16 @@ fun AdminBackupTab(
     ) { uri: Uri? ->
         if (uri != null) onExportInventoryCsv(uri)
     }
+
+    val customersLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? -> if (uri != null) onExportCustomersCsv(uri) }
+    val expensesLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? -> if (uri != null) onExportExpensesCsv(uri) }
+    val debtsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? -> if (uri != null) onExportDebtTransactionsCsv(uri) }
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream")
     ) { uri: Uri? ->
@@ -94,6 +107,31 @@ fun AdminBackupTab(
             Icon(Icons.Default.FileDownload, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("تصدير المخزون والتكاليف CSV")
+        }
+
+        OutlinedButton(
+            onClick = { customersLauncher.launch("POWER_FEUL_POS_customers.csv") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("تصدير العملاء وأرصدة الديون CSV")
+        }
+        OutlinedButton(
+            onClick = { expensesLauncher.launch("POWER_FEUL_POS_expenses.csv") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("تصدير المصروفات CSV")
+        }
+        OutlinedButton(
+            onClick = { debtsLauncher.launch("POWER_FEUL_POS_debt_transactions.csv") },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.FileDownload, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text("تصدير سجل حركات الديون والسداد CSV")
         }
 
         HorizontalDivider()

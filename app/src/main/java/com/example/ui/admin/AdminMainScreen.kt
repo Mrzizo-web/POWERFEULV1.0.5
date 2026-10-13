@@ -76,6 +76,9 @@ fun AdminMainScreen(
     onIngestTestSms: (sender: String, body: String) -> Unit = { _, _ -> },
     onExportSalesCsv: (Uri) -> Unit,
     onExportInventoryCsv: (Uri) -> Unit,
+    onExportCustomersCsv: (Uri) -> Unit = {},
+    onExportExpensesCsv: (Uri) -> Unit = {},
+    onExportDebtTransactionsCsv: (Uri) -> Unit = {},
     onCreateBackup: (Uri, String) -> Unit,
     onRestoreBackup: (Uri, String) -> Unit,
     insights: List<com.example.data.engine.AiInsight> = emptyList(),
@@ -227,6 +230,9 @@ fun AdminMainScreen(
                     AdminTab.BACKUP -> AdminBackupTab(
                         onExportSalesCsv = onExportSalesCsv,
                         onExportInventoryCsv = onExportInventoryCsv,
+                        onExportCustomersCsv = onExportCustomersCsv,
+                        onExportExpensesCsv = onExportExpensesCsv,
+                        onExportDebtTransactionsCsv = onExportDebtTransactionsCsv,
                         onCreateBackup = onCreateBackup,
                         onRestoreBackup = onRestoreBackup,
                         backupStatusMessage = backupStatusMessage
