@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -15,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.net.ServerSocket
 
 class GatewayQueueClaimAndroidTest {
     private lateinit var db: AppDatabase
@@ -75,6 +77,70 @@ class GatewayQueueClaimAndroidTest {
             assertEquals("RETRYING", stored.status)
             assertEquals(1, stored.retryCount)
             assertTrue(stored.errorMessage.contains("not configured"))
+        } finally {
+            engine.stopPeriodicRetryLoop()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test
+    fun failedQueueItemCanBeManuallyRetriedAfterEndpointIsFixed() = runBlocking {
+        val dao = db.gatewayQueueDao()
+        val item = GatewayQueueEntity(
+            id = "manual-retry-after-failure",
+            type = "OUTGOING_SYNC",
+            payload = "{}",
+            targetEndpoint = "",
+            retryCount = 0,
+            maxRetries = 1,
+            nextAttemptAt = 0L
+        )
+        dao.insertItem(item)
+
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val engine = com.example.data.engine.GatewaySyncEngine(
+            db,
+            scope,
+            autoStartRetry = false
+        )
+
+        try {
+            engine.retryAllNow()
+            val failed = dao.getAllQueueItems().first().single()
+            assertEquals("FAILED", failed.status)
+            assertEquals(1, failed.retryCount)
+
+            val localServer = ServerSocket(0)
+            val serverJob = scope.launch {
+                localServer.use { server ->
+                    server.accept().use { client ->
+                        client.soTimeout = 5000
+                        val reader = client.getInputStream().bufferedReader(Charsets.ISO_8859_1)
+                        while (true) {
+                            val line = reader.readLine() ?: break
+                            if (line.isEmpty()) break
+                        }
+                        val response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        client.getOutputStream().apply {
+                            write(response.toByteArray(Charsets.ISO_8859_1))
+                            flush()
+                        }
+                    }
+                }
+            }
+
+            dao.updateItem(
+                failed.copy(
+                    targetEndpoint = "http://127.0.0.1:" + localServer.localPort + "/retry"
+                )
+            )
+            engine.retryNow(failed.id)
+            serverJob.join()
+
+            val completed = dao.getAllQueueItems().first().single()
+            assertEquals("COMPLETED", completed.status)
+            assertEquals(0, completed.retryCount)
+            assertTrue(completed.errorMessage.isBlank())
         } finally {
             engine.stopPeriodicRetryLoop()
             scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
