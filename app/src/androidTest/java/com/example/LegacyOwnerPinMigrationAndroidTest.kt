@@ -6,6 +6,7 @@ import com.example.data.local.AppDatabase
 import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
 import com.example.data.local.migration.MIGRATION_3_4
+import com.example.data.local.migration.MIGRATION_4_5
 import com.example.security.OwnerPinSetupManager
 import com.example.security.PasswordHasher
 import org.junit.Assert.assertFalse
@@ -52,7 +53,7 @@ class LegacyOwnerPinMigrationAndroidTest {
         bootstrap.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .allowMainThreadQueries()
             .build()
 
@@ -69,6 +70,7 @@ class LegacyOwnerPinMigrationAndroidTest {
             assertTrue(cashier.pinHash.isNotBlank())
             assertTrue(cashier.pinSalt.isNotBlank())
             assertTrue(PasswordHasher.DEFAULT.verify("2468", cashier.pinSalt, cashier.pinHash))
+            assertTrue("Database must finish on the current schema version", upgraded.openHelper.readableDatabase.version == 5)
 
             val configuredOwner = kotlinx.coroutines.runBlocking {
                 OwnerPinSetupManager(upgraded).setInitialPin(owner.id, "583149")
