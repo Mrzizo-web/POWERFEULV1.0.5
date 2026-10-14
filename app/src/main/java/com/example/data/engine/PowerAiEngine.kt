@@ -6,19 +6,34 @@ import kotlinx.coroutines.withContext
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.regex.Pattern
+import org.json.JSONArray
+import org.json.JSONObject
 
 class PowerAiEngine(private val db: AppDatabase) {
 
-    suspend fun getGeminiApiKey(): String {
-        return withContext(Dispatchers.IO) {
-            db.settingsDao().getSetting("gemini_api_key") ?: ""
+    suspend fun getGeminiApiKey(): String = withContext(Dispatchers.IO) {
+        val stored = db.settingsDao().getSetting("gemini_api_key") ?: ""
+        if (stored.isBlank()) return@withContext ""
+
+        // New keys are always encrypted. Migrate legacy plaintext values on read.
+        if (stored.startsWith(PowerAiSecretStore.ENCRYPTED_PREFIX)) {
+            return@withContext PowerAiSecretStore.decrypt(stored)
         }
+        val encrypted = runCatching { PowerAiSecretStore.encrypt(stored) }
+            .getOrNull()?.takeIf { it.isNotBlank() } ?: return@withContext ""
+        db.settingsDao().setSetting(
+            com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", encrypted)
+        )
+        stored
     }
 
     suspend fun saveGeminiApiKey(key: String) {
         withContext(Dispatchers.IO) {
-            db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", key.trim()))
+            val normalized = key.trim()
+            val protectedValue = if (normalized.isBlank()) "" else PowerAiSecretStore.encrypt(normalized)
+            db.settingsDao().setSetting(
+                com.example.data.local.entity.CafeteriaSettingEntity("gemini_api_key", protectedValue)
+            )
         }
     }
 
@@ -79,8 +94,8 @@ class PowerAiEngine(private val db: AppDatabase) {
                 if (geminiResp.isNotBlank()) {
                     return@withContext geminiResp
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
+            } catch (_: Exception) {
+                // Remote AI is optional; keep failures private and fall back locally.
             }
         }
 
@@ -109,50 +124,57 @@ class PowerAiEngine(private val db: AppDatabase) {
     }
 
     private fun callGeminiApi(apiKey: String, prompt: String): String {
-        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey")
+        // Never place credentials in the URL, where they can appear in logs or proxy metadata.
+        val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
         val conn = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 8000
             readTimeout = 8000
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+            setRequestProperty("x-goog-api-key", apiKey)
         }
 
-        val escapedPrompt = prompt.replace("\"", "\\\"").replace("\n", "\\n")
         val systemInstruction = "أنت مساعد قراءة واستشارة فقط لنظام Power Home Gym وPOWER FEUL POS. لا تنفذ ولا تؤكد ولا ترفض ولا تعيد إسناد أي عملية مالية، ولا تغيّر المخزون أو الشفتات أو الحوالات. أجب بدقة واختصار وبالعربية المهنية."
-        val jsonPayload = """
-            {
-              "contents": [
-                {
-                  "parts": [
-                    {"text": "$systemInstruction: $escapedPrompt"}
-                  ]
-                }
-              ]
-            }
-        """.trimIndent()
+        val jsonPayload = JSONObject()
+            .put(
+                "contents",
+                JSONArray().put(
+                    JSONObject().put(
+                        "parts",
+                        JSONArray().put(
+                            JSONObject().put("text", "$systemInstruction\n\nسؤال المستخدم:\n$prompt")
+                        )
+                    )
+                )
+            )
+            .toString()
 
-        OutputStreamWriter(conn.outputStream, "UTF-8").use {
-            it.write(jsonPayload)
-            it.flush()
-        }
-
-        val code = conn.responseCode
-        if (code in 200..299) {
-            val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+        try {
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(jsonPayload) }
+            val code = conn.responseCode
+            if (code !in 200..299) return ""
+            return conn.inputStream.bufferedReader(Charsets.UTF_8).use { parseGeminiResponse(it.readText()) }
+        } finally {
             conn.disconnect()
-            return parseGeminiResponse(responseText)
         }
-        conn.disconnect()
-        return ""
     }
 
-    private fun parseGeminiResponse(json: String): String {
-        val matcher = Pattern.compile(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""").matcher(json)
-        if (matcher.find()) {
-            val raw = matcher.group(1) ?: ""
-            return raw.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
-        }
-        return ""
+    internal fun parseGeminiResponse(json: String): String {
+        return runCatching {
+            val candidates = JSONObject(json).optJSONArray("candidates") ?: return ""
+            val firstContent = candidates.optJSONObject(0)?.optJSONObject("content") ?: return ""
+            val parts = firstContent.optJSONArray("parts") ?: return ""
+            buildString {
+                for (index in 0 until parts.length()) {
+                    val text = parts.optJSONObject(index)?.optString("text").orEmpty()
+                    if (text.isNotBlank()) {
+                        if (isNotEmpty()) append("\n")
+                        append(text)
+                    }
+                }
+            }
+        }.getOrDefault("")
     }
+
 }

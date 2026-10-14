@@ -9,6 +9,7 @@ import com.example.data.local.entity.UserEntity
 import com.example.data.local.entity.CustomerEntity
 import com.example.data.local.entity.ExpenseEntity
 import com.example.data.local.entity.DebtTransactionEntity
+import com.example.data.local.entity.CafeteriaSettingEntity
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.UserRole
 import com.example.security.PasswordHasher
@@ -100,6 +101,21 @@ class BackupRestoreEngineAndroidTest {
         assertEquals(250.0, products.single().price, 0.001)
         assertTrue("Owner account must remain available", db.userDao().getUserById(ownerId) != null)
     }
+    @Test
+    fun portableBackupDoesNotRestoreDeviceBoundGeminiKey() = runBlocking {
+        val originalCiphertext = "power-ai-gcm:v1:SYNTHETIC_DEVICE_BOUND_CIPHERTEXT"
+        db.settingsDao().setSetting(CafeteriaSettingEntity("gemini_api_key", originalCiphertext))
+
+        val backup = engine.createFullBackupBytes(ownerId, "مالك النسخة التجريبية", backupPassword)
+
+        // Simulate a local value on the destination install; the portable backup must
+        // replace it with an empty value rather than copy ciphertext bound to another device.
+        db.settingsDao().setSetting(CafeteriaSettingEntity("gemini_api_key", "different-local-value"))
+        engine.restoreFullBackup(backup, backupPassword, ownerId)
+
+        assertEquals("", db.settingsDao().getSetting("gemini_api_key") ?: "")
+    }
+
     @Test
     fun csvExportsIncludeLiveCustomerExpenseAndDebtRecordsAndExcelFriendlyUtf8() = runBlocking {
         db.customerDao().insertCustomer(

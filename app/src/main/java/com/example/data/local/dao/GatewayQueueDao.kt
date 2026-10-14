@@ -19,6 +19,13 @@ interface GatewayQueueDao {
     @Query("SELECT * FROM gateway_offline_queue WHERE status IN ('PENDING', 'RETRYING', 'FAILED') ORDER BY createdAt ASC")
     suspend fun getManuallyRetryableItemsSync(): List<GatewayQueueEntity>
 
+    @Query("SELECT * FROM gateway_offline_queue WHERE id = :id LIMIT 1")
+    suspend fun getQueueItemById(id: String): GatewayQueueEntity?
+
+    /** Atomically prepare one eligible row for manual retry without overwriting IN_PROGRESS. */
+    @Query("UPDATE gateway_offline_queue SET status = 'RETRYING', retryCount = 0, nextAttemptAt = 0, errorMessage = '' WHERE id = :id AND status IN ('PENDING', 'RETRYING', 'FAILED')")
+    suspend fun prepareManualRetry(id: String): Int
+
     @Query("SELECT COUNT(*) FROM gateway_offline_queue WHERE status IN ('PENDING', 'RETRYING')")
     fun getPendingCount(): Flow<Int>
 

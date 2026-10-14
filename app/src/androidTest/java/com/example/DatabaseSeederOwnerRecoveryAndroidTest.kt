@@ -1,0 +1,102 @@
+package com.example
+
+import androidx.room.Room
+import androidx.test.platform.app.InstrumentationRegistry
+import com.example.data.local.AppDatabase
+import com.example.data.local.entity.UserEntity
+import com.example.data.seed.DatabaseSeeder
+import com.example.domain.model.UserRole
+import com.example.security.PasswordHasher
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class DatabaseSeederOwnerRecoveryAndroidTest {
+    @Test
+    fun seederPreservesDisabledOwnerButLoginQueryAllowsCredentialGatedRecovery() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val existingCredentials = PasswordHasher.DEFAULT.hash("2468")
+            val owner = UserEntity(
+                id = "user-owner-ziad",
+                name = "Local Owner",
+                username = "owner",
+                pinHash = existingCredentials.hashHex,
+                pinSalt = existingCredentials.saltHex,
+                role = UserRole.OWNER,
+                isActive = false
+            )
+            db.userDao().insertUser(owner)
+            db.userDao().insertUser(
+                UserEntity(
+                    id = "inactive-cashier",
+                    name = "Inactive Cashier",
+                    username = "cashier",
+                    role = UserRole.CASHIER,
+                    isActive = false
+                )
+            )
+
+            DatabaseSeeder.seedIfNeeded(db)
+
+            val recoveredOwner = db.userDao().getUserById(owner.id)
+            assertNotNull(recoveredOwner)
+            assertFalse("Seeding must not reactivate a disabled owner", recoveredOwner!!.isActive)
+            assertEquals(owner.pinHash, recoveredOwner.pinHash)
+            assertEquals(owner.pinSalt, recoveredOwner.pinSalt)
+            assertTrue(PasswordHasher.DEFAULT.verify("2468", recoveredOwner.pinSalt, recoveredOwner.pinHash))
+            assertFalse(db.userDao().getUserById("inactive-cashier")!!.isActive)
+
+            val loginUsers = db.userDao().getLoginUsers(owner.id).first()
+            assertEquals("Only the known owner should be offered for credential-gated recovery", listOf(owner.id), loginUsers.map { it.id })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun doesNotReactivateOwnerWhenAnotherActiveUserExists() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val owner = UserEntity(
+                id = "user-owner-ziad",
+                name = "Local Owner",
+                username = "owner",
+                pinHash = "existing-hash",
+                pinSalt = "existing-salt",
+                role = UserRole.OWNER,
+                isActive = false
+            )
+            db.userDao().insertUser(owner)
+            db.userDao().insertUser(
+                UserEntity(
+                    id = "active-cashier",
+                    name = "Active Cashier",
+                    username = "active-cashier",
+                    role = UserRole.CASHIER,
+                    isActive = true
+                )
+            )
+
+            DatabaseSeeder.seedIfNeeded(db)
+
+            assertTrue(!db.userDao().getUserById(owner.id)!!.isActive)
+            assertEquals(
+                listOf("active-cashier"),
+                db.userDao().getLoginUsers(owner.id).first().map { it.id }
+            )
+        } finally {
+            db.close()
+        }
+    }
+}

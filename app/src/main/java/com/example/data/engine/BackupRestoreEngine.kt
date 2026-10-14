@@ -186,7 +186,7 @@ class BackupRestoreEngine(
                             if (
                                 schema.name.equals("settings", ignoreCase = true) &&
                                 i == secretValueIndex &&
-                                settingKey in DEVICE_BOUND_SECRETS
+                                isDeviceBoundSecretKey(settingKey)
                             ) {
                                 // This credential belongs to this device; never export it,
                                 // even inside the encrypted backup.
@@ -536,6 +536,11 @@ class BackupRestoreEngine(
         private const val KEY_BITS = 256
         private const val GCM_TAG_BITS = 128
         private const val GCM_TAG_BYTES = 16
-        private val DEVICE_BOUND_SECRETS = setOf("gateway_token", "gateway_shared_secret", "gateway_hmac_key")
+        private val DEVICE_BOUND_SECRETS = setOf(
+            "gateway_token", "gateway_shared_secret", "gateway_hmac_key", "gemini_api_key"
+        )
+
+        internal fun isDeviceBoundSecretKey(key: String): Boolean =
+            key.lowercase(Locale.ROOT) in DEVICE_BOUND_SECRETS
     }
 }

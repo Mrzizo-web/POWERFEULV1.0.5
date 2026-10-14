@@ -2,6 +2,7 @@ package com.example.data.engine
 
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.GatewayQueueEntity
+import com.example.data.network.GatewayLocalNetworkHostPolicy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import java.io.OutputStreamWriter
@@ -79,28 +80,19 @@ class GatewaySyncEngine(
     }
 
     suspend fun retryNow(itemId: String) = withContext(Dispatchers.IO) {
-        val item = queueDao.getManuallyRetryableItemsSync().firstOrNull { it.id == itemId }
-            ?: return@withContext
-        val prepared = item.copy(
-            status = "RETRYING",
-            retryCount = 0,
-            nextAttemptAt = 0L,
-            errorMessage = ""
-        )
-        queueDao.updateItem(prepared)
+        // The status transition is an atomic SQL update. Never write an old row
+        // snapshot back over a worker that may already have claimed the item.
+        if (queueDao.prepareManualRetry(itemId) != 1) return@withContext
+        val prepared = queueDao.getQueueItemById(itemId) ?: return@withContext
         processQueueItem(prepared)
     }
 
     suspend fun retryAllNow() = withContext(Dispatchers.IO) {
-        val retryable = queueDao.getManuallyRetryableItemsSync()
-        for (item in retryable) {
-            val prepared = item.copy(
-                status = "RETRYING",
-                retryCount = 0,
-                nextAttemptAt = 0L,
-                errorMessage = ""
-            )
-            queueDao.updateItem(prepared)
+        // Snapshot IDs only; atomically claim each row immediately before retry.
+        val retryableIds = queueDao.getManuallyRetryableItemsSync().map { it.id }
+        for (id in retryableIds) {
+            if (queueDao.prepareManualRetry(id) != 1) continue
+            val prepared = queueDao.getQueueItemById(id) ?: continue
             processQueueItem(prepared)
         }
     }
@@ -116,9 +108,14 @@ class GatewaySyncEngine(
     private suspend fun processQueueItem(item: GatewayQueueEntity) {
         val startedAt = System.currentTimeMillis()
         if (queueDao.claimItem(item.id, startedAt) != 1) return
-        val claimedItem = item.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
 
-        if (item.targetEndpoint.isBlank()) {
+        // A worker may have loaded this row before a manual retry reset it. Once the
+        // atomic claim succeeds, reload the current row so stale retryCount/payload
+        // values cannot overwrite the manual retry state.
+        val freshClaimedRow = queueDao.getQueueItemById(item.id) ?: return
+        val claimedItem = freshClaimedRow.copy(status = "IN_PROGRESS", lastAttemptAt = startedAt)
+
+        if (claimedItem.targetEndpoint.isBlank()) {
             // A missing destination is not a successful delivery. Keep the record
             // in the retry/error queue so the UI cannot report silent success.
             handleFailure(claimedItem, "Endpoint URL is not configured; item was not transmitted")
@@ -126,7 +123,7 @@ class GatewaySyncEngine(
         }
 
         try {
-            val success = sendHttpRequest(item.targetEndpoint, item.payload)
+            val success = sendHttpRequest(claimedItem.targetEndpoint, claimedItem.payload)
             if (success) {
                 queueDao.updateItem(
                     claimedItem.copy(
@@ -171,22 +168,8 @@ class GatewaySyncEngine(
         )
     }
 
-    private fun isLocalNetworkHost(host: String): Boolean {
-        val normalized = host.trim().removePrefix("[").removeSuffix("]").lowercase()
-        if (normalized == "localhost" || normalized.endsWith(".localhost") ||
-            normalized == "::1" || normalized.startsWith("127.")
-        ) return true
-
-        val octets = normalized.split(".").map { it.toIntOrNull() ?: return false }
-        if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-        val a = octets[0]
-        val b = octets[1]
-        return a == 10 ||
-            (a == 192 && b == 168) ||
-            (a == 172 && b in 16..31) ||
-            (a == 169 && b == 254) ||
-            a == 127
-    }
+    private fun isLocalNetworkHost(host: String): Boolean =
+        GatewayLocalNetworkHostPolicy.isAllowedCleartextHost(host)
 
     private fun sendHttpRequest(targetUrl: String, body: String): Boolean {
         val url = URL(targetUrl)

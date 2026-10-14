@@ -432,6 +432,21 @@ fun WalletTransactionItem(
     }
 }
 
+/**
+ * Uses the same message shapes as real wallet notifications so the simulator
+ * tests parsing against provider-like text instead of a special demo-only phrase.
+ */
+internal fun buildTestWalletSms(
+    walletCode: String,
+    amount: String,
+    transactionId: String,
+    sender: String
+): String = when (walletCode) {
+    "JEEB" -> "اضيف $amount ر.ي تحويل مشترك رص:75000ر.ي من $sender-777123456"
+    "FLOOSAK" -> "استلمت حوالة من $sender بمبلغ $amount ر.ي رصيدك 25000 ر.ي"
+    else -> "استلمت YER $amount كقيمة مشتريات بمرجع $transactionId من $sender"
+}
+
 @Composable
 fun TestSmsDialog(
     onDismiss: () -> Unit,
@@ -486,11 +501,12 @@ fun TestSmsDialog(
                     val senderClean = senderText.ifBlank { "عميل تجريبي" }
                     val amountClean = amountText.ifBlank { "5000" }
                     val txIdClean = txIdText.ifBlank { "468486397181" }
-                    val body = when (selectedWallet) {
-                        "JEEB" -> "اضيف $amountClean ر.ي تحويل مشترك رص:75000ر.ي من $senderClean-777123456"
-                        "FLOOSAK" -> "استلمت حوالة من $senderClean بمبلغ $amountClean ر.ي رصيدك 25000 ر.ي"
-                        else -> "لقد استلمت ر.ي $amountClean كقيمة مشتريات بمرجع $txIdClean من $senderClean"
-                    }
+                    val body = buildTestWalletSms(
+                        walletCode = selectedWallet,
+                        amount = amountClean,
+                        transactionId = txIdClean,
+                        sender = senderClean
+                    )
                     onSend(selectedWallet, body)
                 }
             ) {

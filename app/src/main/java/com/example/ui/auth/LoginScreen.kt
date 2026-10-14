@@ -128,7 +128,10 @@ fun LoginScreen(
                                     onClearError()
                                 },
                                 label = {
-                                    Text("${profile.name} (${profile.role.titleAr})")
+                                    Text(
+                                        "${profile.name} (${profile.role.titleAr})" +
+                                            if (profile.isRecoveryAccount) " — استرداد" else ""
+                                    )
                                 },
                                 leadingIcon = {
                                     Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -143,6 +146,15 @@ fun LoginScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+
+                selectedUser?.takeIf { it.isRecoveryAccount }?.let {
+                    Text(
+                        text = "لا توجد حسابات نشطة. أدخل PIN الحالي الصحيح للمالك لإعادة تفعيل الحساب؛ لن يتغير الحساب إلا بعد نجاح المصادقة.",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
 
                 selectedUser?.takeIf { it.requiresPinSetup }?.let {
                     Text(

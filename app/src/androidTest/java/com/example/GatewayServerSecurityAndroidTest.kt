@@ -125,7 +125,16 @@ class GatewayServerSecurityAndroidTest {
             gatewaySyncEngine = GatewaySyncEngine(db, syncScope!!, autoStartRetry = false),
             context = InstrumentationRegistry.getInstrumentation().targetContext
         )
-        assertTrue("Gateway server should restart on the same port", server.start())
+        // Closing an accepted TCP connection can leave a short OS-level port-reuse
+        // window on some emulator images. Retry the same port briefly and report the
+        // actual bind exception if the listener cannot recover.
+        val restartDeadline = System.currentTimeMillis() + 3_000L
+        var restarted = false
+        while (!restarted && System.currentTimeMillis() < restartDeadline) {
+            restarted = server.start()
+            if (!restarted) Thread.sleep(50L)
+        }
+        assertTrue("Gateway server should restart on the same port: ${server.lastStartError}", restarted)
         val afterRestart = sendRequest("GET", "/api/status", headers, "")
         assertTrue("Persisted replay nonce must survive server restart: " + afterRestart, afterRestart.startsWith("HTTP/1.1 409"))
     }
