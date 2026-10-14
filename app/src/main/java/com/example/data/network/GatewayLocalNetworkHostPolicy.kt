@@ -4,8 +4,9 @@ import java.net.Inet6Address
 import java.net.InetAddress
 
 /**
- * Cleartext HTTP is permitted only to explicit local/private hosts.
- * IPv4 is parsed as four ASCII numeric octets before loopback is allowed.
+ * Cleartext HTTP is permitted only to explicit private LAN/VPN hosts.
+ * This includes RFC1918, loopback, link-local, ULA IPv6, and Tailscale-style
+ * overlay VPN addresses in RFC 6598's 100.64.0.0/10 shared address range.
  */
 object GatewayLocalNetworkHostPolicy {
     fun isAllowedCleartextHost(host: String): Boolean {
@@ -28,6 +29,7 @@ object GatewayLocalNetworkHostPolicy {
         val a = numbers[0]
         val b = numbers[1]
         return a == 10 ||
+            (a == 100 && b in 64..127) ||
             (a == 172 && b in 16..31) ||
             (a == 192 && b == 168) ||
             (a == 169 && b == 254) ||
