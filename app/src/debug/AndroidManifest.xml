@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <permission
+        android:name="com.aistudio.powerfeulpos.wzkmqy.permission.DEBUG_GATEWAY_INTEGRATION"
+        android:protectionLevel="signature" />
+
+    <application>
+        <activity
+            android:name="com.example.gateway.DebugGatewayIntegrationActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:permission="com.aistudio.powerfeulpos.wzkmqy.permission.DEBUG_GATEWAY_INTEGRATION"
+            android:theme="@style/Theme.MyApplication" />
+    </application>
+</manifest>
