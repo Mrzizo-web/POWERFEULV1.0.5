@@ -176,12 +176,14 @@ class GatewaySyncEngine(
         require(url.protocol.equals("https", ignoreCase = true) ||
             url.protocol.equals("http", ignoreCase = true)
         ) { "Unsupported Gateway endpoint protocol" }
-        if (url.protocol.equals("http", ignoreCase = true)) {
-            require(isLocalNetworkHost(url.host)) {
-                "Cleartext Gateway requests are restricted to a local/private network host"
-            }
+        // The Gateway is strictly local-first: HTTPS must not be used to exfiltrate
+        // queue payloads to an arbitrary public endpoint either.
+        require(isLocalNetworkHost(url.host)) {
+            "Gateway requests are restricted to a local/private network host"
         }
         val conn = (url.openConnection() as HttpURLConnection).apply {
+            // Never forward SMS/payment payloads to a redirect target.
+            instanceFollowRedirects = false
             requestMethod = "POST"
             connectTimeout = 4000
             readTimeout = 4000
