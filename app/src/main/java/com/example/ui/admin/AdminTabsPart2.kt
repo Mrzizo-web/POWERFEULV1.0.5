@@ -1264,12 +1264,19 @@ fun AdminAuditLogTab(
 fun AdminSettingsTab(
     users: List<UserEntity>,
     onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
-    initialAutoLockMinutes: String = "5"
+    initialAutoLockMinutes: String = "5",
+    onLoadSetting: suspend (key: String) -> String? = { null }
 ) {
     var gymName by remember { mutableStateOf("نادي Power Home Gym") }
     var gatewayPort by remember { mutableStateOf("8080") }
     var autoLockMinutes by remember(initialAutoLockMinutes) { mutableStateOf(initialAutoLockMinutes) }
     var autoStartGateway by remember { mutableStateOf(true) }
+    var authorizedGatewayDeviceId by remember { mutableStateOf("") }
+    var gatewayToken by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        authorizedGatewayDeviceId = onLoadSetting("gateway_device_id").orEmpty()
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
@@ -1289,7 +1296,26 @@ fun AdminSettingsTab(
                     OutlinedTextField(
                         value = gatewayPort,
                         onValueChange = { gatewayPort = it },
-                        label = { Text("منفذ بوابة الـ Wi-Fi المحلية (Port)") },
+                        label = { Text("منفذ بوابة الرسائل (Port)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = authorizedGatewayDeviceId,
+                        onValueChange = { authorizedGatewayDeviceId = it },
+                        label = { Text("معرّف Gateway المصرّح له (من الهاتف)") },
+                        supportingText = {
+                            Text("يجب أن يطابق حرفيًا معرّف Gateway Device ID في تطبيق الهاتف. لا تضع عنوان IP هنا.")
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = gatewayToken,
+                        onValueChange = { gatewayToken = it },
+                        label = { Text("رمز HMAC / Gateway Token (اختياري عند الإبقاء على الحالي)") },
+                        supportingText = {
+                            Text("أدخل الرمز نفسه الموجود في تطبيق الهاتف. يجب أن يكون 32 حرفًا على الأقل.")
+                        },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -1313,6 +1339,11 @@ fun AdminSettingsTab(
                         onClick = {
                             onSaveSetting("gym_name", gymName)
                             onSaveSetting("gateway_port", gatewayPort)
+                            onSaveSetting("gateway_device_id", authorizedGatewayDeviceId.trim())
+                            if (gatewayToken.isNotBlank()) {
+                                onSaveSetting("gateway_token", gatewayToken.trim())
+                                gatewayToken = ""
+                            }
                             onSaveSetting("auto_lock_minutes", autoLockMinutes)
                             onSaveSetting("auto_start_gateway", autoStartGateway.toString())
                         },
