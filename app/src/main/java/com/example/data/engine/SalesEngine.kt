@@ -37,7 +37,8 @@ class SalesEngine(
         paymentReference: String = "",
         selectedCustomerId: String? = null,
         discountAmount: Double = 0.0,
-        notes: String = ""
+        notes: String = "",
+        paymentProofPath: String? = null
     ): SaleResult {
         if (!PermissionChecker.hasPermission(user.role, AppPermission.PROCESS_SALE)) {
             return SaleResult.Error("ليس لديك صلاحية تنفيذ المبيعات")
@@ -106,7 +107,7 @@ class SalesEngine(
                     if (openShift.status != com.example.domain.model.ShiftStatus.OPEN) {
                         throw InventoryValidationException("لا يمكن البيع على شفت مغلق")
                     }
-                    if (openShift.userId != user.id && user.role !in setOf(UserRole.OWNER, UserRole.ADMIN)) {
+                    if (openShift.userId != user.id && user.role != UserRole.OWNER) {
                         throw InventoryValidationException("لا يمكن تنفيذ مبيعات على شفت مستخدم آخر")
                     }
                     val currentProducts = linkedMapOf<String, ProductEntity>()
@@ -183,7 +184,10 @@ class SalesEngine(
                         cashReceived = cashReceived,
                         cashChange = cashChange,
                         totalCost = currentTotalCost,
-                        notes = notes
+                        notes = notes,
+                        paymentProofPath = paymentProofPath?.takeIf {
+                            paymentMethod == PaymentMethod.E_WALLET && it.isNotBlank()
+                        }
                     )
                     saleEntity = saleRecord
                     saleDao.insertSale(saleRecord)

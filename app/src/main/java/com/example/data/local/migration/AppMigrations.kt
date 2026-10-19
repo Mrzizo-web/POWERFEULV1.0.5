@@ -156,3 +156,13 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         )
     }
 }
+
+/**
+ * Version 6 adds an optional local image path to wallet-payment sales.
+ * Expired image cleanup never removes or alters the corresponding sales row.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE sales ADD COLUMN paymentProofPath TEXT")
+    }
+}
