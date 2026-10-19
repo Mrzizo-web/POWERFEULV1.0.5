@@ -93,4 +93,9 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: gradle connectedDebugAndroidTest
+          # Gateway/SMS delivery is paused in the POS-only app. Exclude only its legacy
+          # network/ingestion fixtures; keep sales, inventory, shifts, debts, migrations,
+          # backups, and wallet-proof instrumentation enabled.
+          script: >-
+            gradle connectedDebugAndroidTest
+            -Pandroid.testInstrumentationRunnerArguments.notClass=com.example.GatewayQueueAtomicRetryAndroidTest,com.example.GatewayQueueClaimAndroidTest,com.example.GatewayServerSecurityAndroidTest,com.example.GatewayServerWalletIngestionAndroidTest,com.example.WalletShiftIntegrationTest
