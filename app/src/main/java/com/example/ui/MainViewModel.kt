@@ -59,6 +59,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
+        // Keep proof images within the 40-day retention window even if the app remains
+        // open for weeks; startup cleanup handles a process/device restart.
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(24L * 60L * 60L * 1000L)
+                PaymentProofRetention.cleanupExpired(File(application.filesDir, "payment_proofs"))
+            }
+        }
+
         // Real periodic enforcement: the session remains locked until explicit unlock.
         viewModelScope.launch {
             while (true) {
@@ -85,6 +94,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val isExecutingSale = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val lastCompletedSale = MutableStateFlow<SaleEntity?>(null)
+    val lastCompletedSaleItems = MutableStateFlow<List<CartItem>>(emptyList())
     val snackbarMessage = MutableStateFlow<String?>(null)
     val loginErrorMessage = MutableStateFlow<String?>(null)
     val backupStatusMessage = MutableStateFlow<String?>(null)
@@ -298,6 +308,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessionManager.lockManually()
         _currentUser.value = null
         _activeScreen.value = AppScreen.LOGIN
+        lastCompletedSale.value = null
+        lastCompletedSaleItems.value = emptyList()
         clearCart()
     }
 
@@ -414,6 +426,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val shift = currentShift.value
         val items = _cartItems.value
         if (items.isEmpty()) return
+        val validatedProofPath = if (paymentMethod == PaymentMethod.E_WALLET && !paymentProofPath.isNullOrBlank()) {
+            runCatching {
+                val proofDirectory = File(getApplication<Application>().filesDir, "payment_proofs").canonicalFile
+                val proofFile = File(paymentProofPath).canonicalFile
+                val allowedPrefix = proofDirectory.path + File.separator
+                proofFile.path.takeIf { proofFile.isFile && proofFile.length() > 0L && it.startsWith(allowedPrefix) }
+            }.getOrNull()
+        } else null
         if (shift == null) {
             snackbarMessage.value = "يجب فتح شفت أولاً قبل إتمام عمليات البيع"
             return
@@ -430,10 +450,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     cashReceived = cashReceived,
                     paymentReference = reference,
                     selectedCustomerId = customerId,
-                    paymentProofPath = paymentProofPath
+                    paymentProofPath = validatedProofPath
                 )
                 if (res is SaleResult.Success) {
                     lastCompletedSale.value = res.sale
+                    lastCompletedSaleItems.value = items.toList()
                     clearCart()
                     showPaymentDialog.value = false
                     snackbarMessage.value = "تمت عملية البيع بنجاح (فاتورة ${res.invoiceNumber})"

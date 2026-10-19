@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
                     val showHandoverDialog by viewModel.showHandoverDialog.collectAsStateWithLifecycle()
                     val showPaymentDialog by viewModel.showPaymentDialog.collectAsStateWithLifecycle()
                     val lastCompletedSale by viewModel.lastCompletedSale.collectAsStateWithLifecycle()
+                    val lastCompletedSaleItems by viewModel.lastCompletedSaleItems.collectAsStateWithLifecycle()
                     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
                     val loginErrorMessage by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
                     val backupStatusMessage by viewModel.backupStatusMessage.collectAsStateWithLifecycle()
@@ -341,12 +342,13 @@ class MainActivity : ComponentActivity() {
                             if (completed != null) {
                                 ReceiptDialog(
                                     sale = completed,
-                                    items = cartItems,
+                                    items = lastCompletedSaleItems,
                                     onPrint = {
                                         viewModel.snackbarMessage.value = "جاري إرسال الفاتورة إلى طابعة البلوتوث/الشبكة..."
                                     },
                                     onDismiss = {
                                         viewModel.lastCompletedSale.value = null
+                                        viewModel.lastCompletedSaleItems.value = emptyList()
                                     }
                                 )
                             }
