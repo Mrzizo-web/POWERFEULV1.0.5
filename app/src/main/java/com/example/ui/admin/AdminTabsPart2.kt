@@ -1264,10 +1264,15 @@ fun AdminAuditLogTab(
 fun AdminSettingsTab(
     users: List<UserEntity>,
     onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
-    initialAutoLockMinutes: String = "5"
+    initialAutoLockMinutes: String = "5",
+    onLoadSetting: suspend (key: String) -> String? = { null }
 ) {
     var gymName by remember { mutableStateOf("نادي Power Home Gym") }
     var autoLockMinutes by remember(initialAutoLockMinutes) { mutableStateOf(initialAutoLockMinutes) }
+
+    LaunchedEffect(Unit) {
+        onLoadSetting("gym_name")?.takeIf { it.isNotBlank() }?.let { gymName = it }
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {

@@ -272,6 +272,7 @@ class MainActivity : ComponentActivity() {
                                             onAskAi = { q -> viewModel.askAi(q) },
                                             onSaveApiKey = { k -> viewModel.saveGeminiApiKey(k) },
                                             onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) },
+                                            onLoadSetting = { key -> viewModel.getSystemSetting(key) },
                                             autoLockMinutes = autoLockMinutes
                                         )
                                     }

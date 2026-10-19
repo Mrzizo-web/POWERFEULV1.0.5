@@ -1176,6 +1176,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             withContext(Dispatchers.Main) { snackbarMessage.value = "تم حفظ الإعداد بنجاح" }
         }
     }
+    suspend fun getSystemSetting(key: String): String? {
+        val user = _currentUser.value ?: return null
+        if (!PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_SETTINGS)) {
+            withContext(Dispatchers.IO) {
+                logUnauthorizedAttempt(user, AppPermission.MANAGE_SETTINGS, "قراءة إعدادات النظام")
+            }
+            return null
+        }
+        return withContext(Dispatchers.IO) { db.settingsDao().getSetting(key) }
+    }
+
     suspend fun askAi(prompt: String): String {
         return powerAiEngine.processQuery(prompt)
     }
