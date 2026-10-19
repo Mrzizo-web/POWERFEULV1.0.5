@@ -28,5 +28,6 @@ data class SaleEntity(
     val voidedAt: Long? = null,
     val voidedByUserId: String = "",
     val voidReason: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val paymentProofPath: String? = null
 )

@@ -40,7 +40,6 @@ fun PosScreen(
     categories: List<CategoryEntity>,
     products: List<ProductEntity>,
     cartItems: List<CartItem>,
-    unreviewedWalletsCount: Int = 0,
     onAddToCart: (ProductEntity) -> Unit,
     onRemoveFromCart: (ProductEntity) -> Unit,
     onClearCart: () -> Unit,
@@ -48,7 +47,6 @@ fun PosScreen(
     onOpenStartShift: () -> Unit,
     onOpenCloseShift: () -> Unit,
     onNavigateToAdmin: () -> Unit,
-    onNavigateToWallets: () -> Unit,
     onLockSession: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -91,19 +89,6 @@ fun PosScreen(
                             modifier = Modifier.padding(end = 6.dp)
                         ) {
                             Text("فتح شفت جديد", fontSize = 12.sp)
-                        }
-                    }
-
-                    // Wallets Button with badge
-                    BadgedBox(
-                        badge = {
-                            if (unreviewedWalletsCount > 0) {
-                                Badge { Text(unreviewedWalletsCount.toString()) }
-                            }
-                        }
-                    ) {
-                        IconButton(onClick = onNavigateToWallets) {
-                            Icon(Icons.Default.AccountBalanceWallet, contentDescription = "الحوالات المالية")
                         }
                     }
 

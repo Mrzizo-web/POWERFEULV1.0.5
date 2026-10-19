@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.domain.model.UserProfile
+import com.example.domain.model.UserRole
 import java.security.MessageDigest
 
 @Composable
@@ -128,8 +129,10 @@ fun LoginScreen(
                                     onClearError()
                                 },
                                 label = {
+                                    val displayName = if (profile.role == UserRole.OWNER) "المالك" else profile.name
+                                    val displayRole = if (profile.role == UserRole.OWNER) UserRole.OWNER.titleAr else UserRole.CASHIER.titleAr
                                     Text(
-                                        "${profile.name} (${profile.role.titleAr})" +
+                                        "$displayName ($displayRole)" +
                                             if (profile.isRecoveryAccount) " — استرداد" else ""
                                     )
                                 },

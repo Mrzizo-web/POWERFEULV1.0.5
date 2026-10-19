@@ -947,7 +947,7 @@ fun AdminEmployeesTab(
     onToggleActive: (userId: String, active: Boolean) -> Unit,
     onRemoveUser: (userId: String) -> Unit = {},
     canManageUsers: Boolean = true,
-    allowedRoles: List<UserRole> = UserRole.values().filter { it != UserRole.OWNER }
+    allowedRoles: List<UserRole> = listOf(UserRole.CASHIER)
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var userPendingRemoval by remember { mutableStateOf<UserEntity?>(null) }
@@ -1268,54 +1268,25 @@ fun AdminSettingsTab(
     onLoadSetting: suspend (key: String) -> String? = { null }
 ) {
     var gymName by remember { mutableStateOf("نادي Power Home Gym") }
-    var gatewayPort by remember { mutableStateOf("8080") }
     var autoLockMinutes by remember(initialAutoLockMinutes) { mutableStateOf(initialAutoLockMinutes) }
-    var autoStartGateway by remember { mutableStateOf(true) }
-    var authorizedGatewayDeviceId by remember { mutableStateOf("") }
-    var gatewayToken by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        authorizedGatewayDeviceId = onLoadSetting("gateway_device_id").orEmpty()
+        onLoadSetting("gym_name")?.takeIf { it.isNotBlank() }?.let { gymName = it }
     }
 
     LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            Text("إعدادات النظام وبوابة الرسائل والأمان", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text("إعدادات الكاشير والأمان", fontWeight = FontWeight.Bold, fontSize = 18.sp)
         }
 
         item {
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("بيانات المنشأة وبوابة نقاط البيع:", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("بيانات المنشأة وإعدادات الجلسة:", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     OutlinedTextField(
                         value = gymName,
                         onValueChange = { gymName = it },
                         label = { Text("اسم المنشأة / النادي") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = gatewayPort,
-                        onValueChange = { gatewayPort = it },
-                        label = { Text("منفذ بوابة الرسائل (Port)") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = authorizedGatewayDeviceId,
-                        onValueChange = { authorizedGatewayDeviceId = it },
-                        label = { Text("معرّف Gateway المصرّح له (من الهاتف)") },
-                        supportingText = {
-                            Text("يجب أن يطابق حرفيًا معرّف Gateway Device ID في تطبيق الهاتف. لا تضع عنوان IP هنا.")
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = gatewayToken,
-                        onValueChange = { gatewayToken = it },
-                        label = { Text("رمز HMAC / Gateway Token (اختياري عند الإبقاء على الحالي)") },
-                        supportingText = {
-                            Text("أدخل الرمز نفسه الموجود في تطبيق الهاتف. يجب أن يكون 32 حرفًا على الأقل.")
-                        },
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -1324,28 +1295,10 @@ fun AdminSettingsTab(
                         label = { Text("مدة قفل الجلسة عند عدم النشاط (1–60 دقيقة؛ الافتراضي 5)") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("الاسترداد التلقائي بعد إعادة التشغيل (Restart Recovery):", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text("تشغيل خادم بوابة الرسائل فور إقلاع الجهاز لضمان عدم ضياع أي حوالة", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = autoStartGateway, onCheckedChange = { autoStartGateway = it })
-                    }
                     Button(
                         onClick = {
                             onSaveSetting("gym_name", gymName)
-                            onSaveSetting("gateway_port", gatewayPort)
-                            onSaveSetting("gateway_device_id", authorizedGatewayDeviceId.trim())
-                            if (gatewayToken.isNotBlank()) {
-                                onSaveSetting("gateway_token", gatewayToken.trim())
-                                gatewayToken = ""
-                            }
                             onSaveSetting("auto_lock_minutes", autoLockMinutes)
-                            onSaveSetting("auto_start_gateway", autoStartGateway.toString())
                         },
                         modifier = Modifier.align(Alignment.End)
                     ) {
@@ -1359,9 +1312,8 @@ fun AdminSettingsTab(
             Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("معلومات النظام والأمان:", fontWeight = FontWeight.Bold)
-                    Text("نظام التشغيل: POWER FEUL POS & SMS GATEWAY 1.0", fontSize = 13.sp)
+                    Text("نظام التشغيل: POWER FEUL POS 1.0", fontSize = 13.sp)
                     Text("قاعدة البيانات: SQLite / Room (Local-First Zero-Cloud)", fontSize = 13.sp)
-                    Text("المحافظ المدعومة: جيب (JEEB) • فلوسك (FLOOSAK) • جوالي (JAWALI)", fontSize = 13.sp)
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     Text("المستخدمون المصرح لهم بالدخول (${users.size}):", fontWeight = FontWeight.Bold)
                     users.forEach { u ->

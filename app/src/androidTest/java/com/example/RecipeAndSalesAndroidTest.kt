@@ -16,6 +16,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import java.util.UUID
 
 class RecipeAndSalesAndroidTest {
 
@@ -720,6 +721,55 @@ class RecipeAndSalesAndroidTest {
         assertTrue((result as SaleResult.Error).message.contains("تغير سعر المنتج"))
         assertEquals(0, db.saleDao().getSalesCount())
         assertEquals(5000.0, db.shiftDao().getShiftById(testShift.id)!!.expectedCash, 0.001)
+    }
+
+
+    @Test
+    fun walletPaymentProofIsSavedWithSaleAndIgnoredForCashSales() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val proofDirectory = java.io.File(context.filesDir, "payment_proofs").apply { mkdirs() }
+        val proof = java.io.File(proofDirectory, "proof-test-${UUID.randomUUID()}.jpg").apply {
+            writeBytes(byteArrayOf(1, 2, 3, 4))
+        }
+        val product = ProductEntity(
+            id = "proof-product-${UUID.randomUUID()}",
+            name = "منتج اختبار إثبات الدفع",
+            categoryId = "cat-shakes",
+            price = 100.0,
+            costPrice = 25.0,
+            isActive = true,
+            isAvailable = true
+        )
+        db.productDao().insertProduct(product)
+        val cart = listOf(CartItem(product = product, quantity = 1, unitPrice = product.price))
+
+        try {
+            val walletResult = salesEngine.executeSale(
+                shift = testShift,
+                user = testUser,
+                items = cart,
+                paymentMethod = PaymentMethod.E_WALLET,
+                paymentReference = "WALLET-PROOF-TEST",
+                paymentProofPath = proof.absolutePath
+            )
+            assertTrue("Wallet sale with proof should succeed: $walletResult", walletResult is SaleResult.Success)
+            val walletSale = (walletResult as SaleResult.Success).sale
+            assertEquals(proof.absolutePath, db.saleDao().getSaleById(walletSale.id)!!.paymentProofPath)
+
+            val cashResult = salesEngine.executeSale(
+                shift = testShift,
+                user = testUser,
+                items = cart,
+                paymentMethod = PaymentMethod.CASH,
+                cashReceived = product.price,
+                paymentProofPath = proof.absolutePath
+            )
+            assertTrue("Cash sale should succeed: $cashResult", cashResult is SaleResult.Success)
+            val cashSale = (cashResult as SaleResult.Success).sale
+            assertNull(db.saleDao().getSaleById(cashSale.id)!!.paymentProofPath)
+        } finally {
+            proof.delete()
+        }
     }
 
 }

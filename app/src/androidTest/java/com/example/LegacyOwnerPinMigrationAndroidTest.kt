@@ -7,6 +7,7 @@ import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
 import com.example.data.local.migration.MIGRATION_3_4
 import com.example.data.local.migration.MIGRATION_4_5
+import com.example.data.local.migration.MIGRATION_5_6
 import com.example.security.OwnerPinSetupManager
 import com.example.security.PasswordHasher
 import org.junit.Assert.assertFalse
@@ -53,6 +54,9 @@ class LegacyOwnerPinMigrationAndroidTest {
         // Lowering user_version alone would keep the current columns and make this test invalid.
         raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
         raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        // Model a true v5 database before resetting its user_version to 1.
+        // Otherwise the v5→v6 migration would collide with the already-existing column.
+        raw.execSQL("ALTER TABLE sales DROP COLUMN paymentProofPath")
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN balanceBefore")
         raw.execSQL("ALTER TABLE shifts DROP COLUMN totalWalletDebtPayments")
@@ -61,7 +65,7 @@ class LegacyOwnerPinMigrationAndroidTest {
         bootstrap.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -78,7 +82,7 @@ class LegacyOwnerPinMigrationAndroidTest {
             assertTrue(cashier.pinHash.isNotBlank())
             assertTrue(cashier.pinSalt.isNotBlank())
             assertTrue(PasswordHasher.DEFAULT.verify("2468", cashier.pinSalt, cashier.pinHash))
-            assertTrue("Database must finish on the current schema version", upgraded.openHelper.readableDatabase.version == 5)
+            assertTrue("Database must finish on the current schema version", upgraded.openHelper.readableDatabase.version == 6)
 
             val configuredOwner = kotlinx.coroutines.runBlocking {
                 OwnerPinSetupManager(upgraded).setInitialPin(owner.id, "583149")

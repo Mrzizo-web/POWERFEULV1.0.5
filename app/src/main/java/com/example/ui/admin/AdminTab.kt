@@ -14,7 +14,6 @@ enum class AdminTab(val titleAr: String) {
     DEBTS("العملاء والديون"),
     EXPENSES("المصروفات"),
     SHIFTS("الورديات"),
-    WALLETS("الحوالات والمحافظ"),
     AI_ASSISTANT("الذكاء والبحث"),
     BACKUP("النسخ الاحتياطي والتصدير"),
     EMPLOYEES("الموظفين"),
@@ -32,7 +31,6 @@ enum class AdminTab(val titleAr: String) {
         DEBTS -> AppPermission.MANAGE_DEBTS
         EXPENSES -> AppPermission.MANAGE_EXPENSES
         SHIFTS -> AppPermission.OPERATE_SHIFT
-        WALLETS -> AppPermission.MANAGE_WALLETS
         AI_ASSISTANT -> AppPermission.VIEW_REPORTS
         BACKUP -> AppPermission.BACKUP_DATA
         EMPLOYEES -> AppPermission.MANAGE_EMPLOYEES

@@ -19,8 +19,8 @@ object DatabaseSeeder {
             db.userDao().insertUser(
                 UserEntity(
                     id = ownerId,
-                    name = "زياد قروش",
-                    username = "ziad",
+                    name = "المالك",
+                    username = "owner",
                     pinHash = "",
                     pinSalt = "",
                     role = UserRole.OWNER,
@@ -54,6 +54,25 @@ object DatabaseSeeder {
                         pinSalt = "",
                         failedAttempts = 0,
                         lockedUntil = null,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        }
+
+        // Normalize legacy role values without deleting accounts or resetting PINs.
+        for (savedUser in db.userDao().getAllUsersSync()) {
+            val normalizedRole = if (savedUser.id == ownerId || savedUser.role == UserRole.OWNER) {
+                UserRole.OWNER
+            } else {
+                UserRole.CASHIER
+            }
+            val normalizedName = if (normalizedRole == UserRole.OWNER) "المالك" else savedUser.name
+            if (savedUser.role != normalizedRole || savedUser.name != normalizedName) {
+                db.userDao().updateUser(
+                    savedUser.copy(
+                        role = normalizedRole,
+                        name = normalizedName,
                         updatedAt = System.currentTimeMillis()
                     )
                 )

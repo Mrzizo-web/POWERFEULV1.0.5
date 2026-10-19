@@ -1,5 +1,17 @@
 package com.example.ui.pos
 
+import android.graphics.BitmapFactory
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
+import java.util.UUID
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,8 +43,34 @@ fun PaymentDialog(
     totalAmount: Double,
     customers: List<CustomerEntity>,
     onDismiss: () -> Unit,
-    onConfirmSale: (method: PaymentMethod, cashReceived: Double, ref: String, custId: String?) -> Unit
+    onConfirmSale: (method: PaymentMethod, cashReceived: Double, ref: String, custId: String?, proofPath: String?) -> Unit
 ) {
+    val context = LocalContext.current
+    var proofFile by remember { mutableStateOf<File?>(null) }
+    var pendingCaptureFile by remember { mutableStateOf<File?>(null) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { succeeded ->
+        val captured = pendingCaptureFile
+        if (succeeded && captured != null && captured.isFile && captured.length() > 0L) {
+            proofFile = captured
+            cameraError = null
+        } else {
+            cameraError = "لم تكتمل عملية التقاط الصورة. يمكن إعادة المحاولة."
+        }
+        pendingCaptureFile = null
+    }
+    val launchCamera = {
+        runCatching {
+            val directory = File(context.filesDir, "payment_proofs")
+            check(directory.isDirectory || directory.mkdirs()) { "تعذر إنشاء مجلد إثباتات الدفع" }
+            val file = File(directory, "proof-${System.currentTimeMillis()}-${UUID.randomUUID()}.jpg")
+            val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            pendingCaptureFile = file
+            cameraLauncher.launch(uri)
+        }.onFailure {
+            cameraError = "تعذر فتح الكاميرا أو إنشاء ملف الصورة."
+        }
+    }
     var selectedMethod by remember { mutableStateOf(PaymentMethod.CASH) }
     var cashReceivedText by remember { mutableStateOf(totalAmount.toString()) }
     var referenceText by remember { mutableStateOf("") }
@@ -99,6 +137,16 @@ fun PaymentDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+                        OutlinedButton(
+                            onClick = { launchCamera() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (proofFile == null) "التقاط صورة إثبات الدفع (اختياري)" else "إعادة التقاط صورة إثبات الدفع")
+                        }
+                        if (proofFile != null) {
+                            Text("تم إرفاق صورة إثبات الدفع بهذه العملية.", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                        }
+                        cameraError?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
                     }
                     PaymentMethod.DEBT -> {
                         Text("اختر العميل لتسجيل الحساب بالآجل:", fontSize = 13.sp)
@@ -131,7 +179,13 @@ fun PaymentDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onConfirmSale(selectedMethod, cashReceived, referenceText, selectedCustomer?.id)
+                    onConfirmSale(
+                        selectedMethod,
+                        cashReceived,
+                        referenceText,
+                        selectedCustomer?.id,
+                        proofFile?.absolutePath.takeIf { selectedMethod == PaymentMethod.E_WALLET }
+                    )
                 },
                 enabled = when (selectedMethod) {
                     PaymentMethod.CASH -> cashReceived >= totalAmount
@@ -200,6 +254,39 @@ fun ReceiptDialog(
             }
         },
         dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إغلاق") }
+        }
+    )
+}
+
+
+@Composable
+fun PaymentProofDialog(
+    path: String,
+    onDismiss: () -> Unit
+) {
+    val proofBitmap = remember(path) {
+        runCatching {
+            val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+            BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+        }.getOrNull()
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("إثبات الدفع بالمحفظة", fontWeight = FontWeight.Bold) },
+        text = {
+            if (proofBitmap != null) {
+                Image(
+                    bitmap = proofBitmap,
+                    contentDescription = "صورة إثبات الدفع",
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Text("الصورة غير موجودة أو انتهت مدة الاحتفاظ بها. سجل العملية المالية ما زال محفوظًا.")
+            }
+        },
+        confirmButton = {
             TextButton(onClick = onDismiss) { Text("إغلاق") }
         }
     )

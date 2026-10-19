@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
 import com.example.data.engine.NewPurchaseItem
 import com.example.domain.model.UserRole
-import com.example.domain.model.WalletTransferStatus
 import com.example.security.AppPermission
 import com.example.security.PermissionChecker
 
@@ -40,13 +39,6 @@ fun AdminMainScreen(
     shifts: List<ShiftEntity>,
     users: List<UserEntity>,
     logs: List<AuditLogEntity>,
-    wallets: List<WalletEntity>,
-    walletTransactions: List<WalletTransactionEntity>,
-    smsInbox: List<WalletSmsEntity>,
-    queueItems: List<GatewayQueueEntity> = emptyList(),
-    isGatewayRunning: Boolean = false,
-    gatewayIp: String = "127.0.0.1",
-    gatewayPort: Int = 8080,
     backupStatusMessage: String?,
     onBack: () -> Unit,
     onSaveProduct: (ProductEntity) -> Unit,
@@ -67,13 +59,6 @@ fun AdminMainScreen(
     onAddEmployee: (name: String, username: String, pin: String, role: UserRole, phone: String) -> Unit,
     onToggleActive: (userId: String, active: Boolean) -> Unit,
     onRemoveUser: (userId: String) -> Unit = {},
-    onUpdateWalletStatus: (txId: String, newStatus: WalletTransferStatus, reason: String) -> Unit,
-    onReassignShift: (txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) -> Unit = { _, _, _, _, _ -> },
-    onToggleGateway: () -> Unit = {},
-    onRetryQueueItem: (String) -> Unit = {},
-    onRetryAllQueue: () -> Unit = {},
-    onClearCompletedQueue: () -> Unit = {},
-    onIngestTestSms: (sender: String, body: String) -> Unit = { _, _ -> },
     onExportSalesCsv: (Uri) -> Unit,
     onExportInventoryCsv: (Uri) -> Unit,
     onExportCustomersCsv: (Uri) -> Unit = {},
@@ -141,7 +126,6 @@ fun AdminMainScreen(
                                     AdminTab.DEBTS -> Icons.Default.People
                                     AdminTab.EXPENSES -> Icons.Default.MoneyOff
                                     AdminTab.SHIFTS -> Icons.Default.AccessTime
-                                    AdminTab.WALLETS -> Icons.Default.AccountBalanceWallet
                                     AdminTab.AI_ASSISTANT -> Icons.Default.AutoAwesome
                                     AdminTab.BACKUP -> Icons.Default.Backup
                                     AdminTab.EMPLOYEES -> Icons.Default.Badge
@@ -209,24 +193,6 @@ fun AdminMainScreen(
                     )
                     AdminTab.EXPENSES -> AdminExpensesTab(expenses, onAddExpense)
                     AdminTab.SHIFTS -> AdminShiftsTab(shifts)
-                    AdminTab.WALLETS -> AdminWalletTab(
-                        wallets = wallets,
-                        transactions = walletTransactions,
-                        smsInbox = smsInbox,
-                        queueItems = queueItems,
-                        isGatewayRunning = isGatewayRunning,
-                        gatewayIp = gatewayIp,
-                        gatewayPort = gatewayPort,
-                        shifts = shifts,
-                        onToggleGateway = onToggleGateway,
-                        onRetryQueueItem = onRetryQueueItem,
-                        onRetryAllQueue = onRetryAllQueue,
-                        onClearCompletedQueue = onClearCompletedQueue,
-                        onIngestTestSms = onIngestTestSms,
-                        onUpdateStatus = onUpdateWalletStatus,
-                        onReassignShift = onReassignShift,
-                        onSaveSetting = onSaveSetting
-                    )
                     AdminTab.AI_ASSISTANT -> AdminAiTab(insights, onAskAi, onSaveApiKey)
                     AdminTab.BACKUP -> AdminBackupTab(
                         onExportSalesCsv = onExportSalesCsv,
@@ -244,11 +210,7 @@ fun AdminMainScreen(
                         onToggleActive = onToggleActive,
                         onRemoveUser = onRemoveUser,
                         canManageUsers = PermissionChecker.hasPermission(currentUser.role, AppPermission.MANAGE_EMPLOYEES),
-                        allowedRoles = if (currentUser.role == UserRole.ADMIN) {
-                            listOf(UserRole.CASHIER)
-                        } else {
-                            UserRole.values().filter { it != UserRole.OWNER }
-                        }
+                        allowedRoles = listOf(UserRole.CASHIER)
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses, saleItems)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)

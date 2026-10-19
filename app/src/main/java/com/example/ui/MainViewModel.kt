@@ -11,6 +11,7 @@ import com.example.data.seed.DatabaseSeeder
 import com.example.data.local.entity.*
 import com.example.domain.model.*
 import com.example.security.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -32,25 +33,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val shiftEngine = ShiftEngine(db)
     val purchaseEngine = PurchaseEngine(db, inventoryEngine)
     val powerAiEngine = PowerAiEngine(db)
-    val walletMatchingEngine = WalletMatchingEngine(db)
     val backupRestoreEngine = BackupRestoreEngine(application, db)
-    val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope, autoStartRetry = false)
-
-    val isGatewayRunning = MutableStateFlow(false)
-    val gatewayPort = MutableStateFlow(8080)
-    val gatewayIp = MutableStateFlow(com.example.util.NetworkUtils.getLocalIpAddress())
     val autoLockMinutes = MutableStateFlow(SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES.toString())
 
-    val pendingQueue: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.pendingQueue
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val pendingQueueCount: StateFlow<Int> = gatewaySyncEngine.pendingCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-    val allQueueItems: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.allQueue
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
+    private val databaseInitialization = CompletableDeferred<Boolean>()
 
     init {
         // Seed the local owner and initial catalog before the login screen is used.
@@ -58,6 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 DatabaseSeeder.seedIfNeeded(db)
+                PaymentProofRetention.cleanupExpired(File(application.filesDir, "payment_proofs"))
                 val configuredIdleMinutes = db.settingsDao()
                     .getSetting("auto_lock_minutes")
                     ?.toIntOrNull()
@@ -65,11 +53,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ?: SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES
                 sessionManager.setIdleTimeoutMinutes(configuredIdleMinutes)
                 autoLockMinutes.value = configuredIdleMinutes.toString()
+                databaseInitialization.complete(true)
 
             } catch (error: Exception) {
+                databaseInitialization.complete(false)
                 withContext(Dispatchers.Main) {
                     loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
+            }
+        }
+
+        // Keep proof images within the 40-day retention window even if the app remains
+        // open for weeks; startup cleanup handles a process/device restart.
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(24L * 60L * 60L * 1000L)
+                PaymentProofRetention.cleanupExpired(File(application.filesDir, "payment_proofs"))
             }
         }
 
@@ -83,16 +82,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Read the real foreground-service state; starting a request is not success.
-        viewModelScope.launch {
-            while (true) {
-                isGatewayRunning.value = com.example.gateway.GatewayService.isServerRunning
-                if (isGatewayRunning.value) {
-                    gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
-                }
-                delay(750L)
-            }
-        }
     }
 
     val currentUser: StateFlow<UserEntity?> = _currentUser.asStateFlow()
@@ -109,6 +98,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val isExecutingSale = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val lastCompletedSale = MutableStateFlow<SaleEntity?>(null)
+    val lastCompletedSaleItems = MutableStateFlow<List<CartItem>>(emptyList())
     val snackbarMessage = MutableStateFlow<String?>(null)
     val loginErrorMessage = MutableStateFlow<String?>(null)
     val backupStatusMessage = MutableStateFlow<String?>(null)
@@ -190,15 +180,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val auditLogs: StateFlow<List<AuditLogEntity>> = db.auditLogDao().getRecentLogs()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val wallets: StateFlow<List<WalletEntity>> = db.walletDao().getAllWallets()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val walletTransactions: StateFlow<List<WalletTransactionEntity>> = db.walletDao().getAllTransactions()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val smsInbox: StateFlow<List<WalletSmsEntity>> = db.walletDao().getAllSms()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
     val aiInsights: StateFlow<List<AiInsight>> = flow {
         emit(powerAiEngine.generateRealInsights())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -223,6 +204,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
+            if (!databaseInitialization.await()) {
+                loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات. أعد فتح التطبيق قبل تسجيل الدخول."
+                return@launch
+            }
             val user = db.userDao().getUserById(userId)
             if (user == null) {
                 loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"
@@ -331,6 +316,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sessionManager.lockManually()
         _currentUser.value = null
         _activeScreen.value = AppScreen.LOGIN
+        lastCompletedSale.value = null
+        lastCompletedSaleItems.value = emptyList()
         clearCart()
     }
 
@@ -441,12 +428,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun executeSale(paymentMethod: PaymentMethod, cashReceived: Double, reference: String, customerId: String?) {
+    fun executeSale(paymentMethod: PaymentMethod, cashReceived: Double, reference: String, customerId: String?, paymentProofPath: String? = null) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.PROCESS_SALE, "تنفيذ المبيعات")) return
         val shift = currentShift.value
         val items = _cartItems.value
         if (items.isEmpty()) return
+        val validatedProofPath = if (paymentMethod == PaymentMethod.E_WALLET && !paymentProofPath.isNullOrBlank()) {
+            runCatching {
+                val proofDirectory = File(getApplication<Application>().filesDir, "payment_proofs").canonicalFile
+                val proofFile = File(paymentProofPath).canonicalFile
+                val allowedPrefix = proofDirectory.path + File.separator
+                proofFile.path.takeIf { proofFile.isFile && proofFile.length() > 0L && it.startsWith(allowedPrefix) }
+            }.getOrNull()
+        } else null
         if (shift == null) {
             snackbarMessage.value = "يجب فتح شفت أولاً قبل إتمام عمليات البيع"
             return
@@ -462,10 +457,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     paymentMethod = paymentMethod,
                     cashReceived = cashReceived,
                     paymentReference = reference,
-                    selectedCustomerId = customerId
+                    selectedCustomerId = customerId,
+                    paymentProofPath = validatedProofPath
                 )
                 if (res is SaleResult.Success) {
                     lastCompletedSale.value = res.sale
+                    lastCompletedSaleItems.value = items.toList()
                     clearCart()
                     showPaymentDialog.value = false
                     snackbarMessage.value = "تمت عملية البيع بنجاح (فاتورة ${res.invoiceNumber})"
@@ -741,8 +738,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_EMPLOYEES, "إضافة موظف")) return
-        if (user.role == UserRole.ADMIN && role != UserRole.CASHIER) {
-            snackbarMessage.value = "المدير يستطيع إنشاء حسابات الكاشير فقط؛ الأدوار الإشرافية متاحة للمالك"
+        if (role != UserRole.CASHIER) {
+            snackbarMessage.value = "النظام يدعم حسابي المالك والكاشير فقط"
             return
         }
         val cleanName = name.trim()
@@ -788,7 +785,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 snackbarMessage.value = "لا يمكن تعطيل حساب المالك"
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
+            if (target.role != UserRole.CASHIER) {
                 snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
                 return@launch
             }
@@ -810,8 +807,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 snackbarMessage.value = "لا يمكن حذف حساب المالك"
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
-                snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
+            if (target.role != UserRole.CASHIER) {
+                snackbarMessage.value = "يمكن حذف حسابات الكاشير فقط؛ لا يمكن حذف حساب المالك"
                 return@launch
             }
             db.userDao().deleteUserById(target.id)
@@ -838,8 +835,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onResult(false, "ليس لديك صلاحية تغيير كلمة السر")
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && user.id != target.id && target.role != UserRole.CASHIER) {
-                onResult(false, "المدير يستطيع تغيير PIN للكاشير فقط")
+            if (user.id != target.id && target.role != UserRole.CASHIER) {
+                onResult(false, "يمكن للمالك تغيير PIN لحساب الكاشير فقط")
                 return@launch
             }
             if (user.id == target.id && !passwordHasher.verify(currentPin, target.pinSalt, target.pinHash)) {
@@ -1146,99 +1143,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateWalletTransactionStatus(txId: String, newStatus: WalletTransferStatus, reason: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تعديل حالة حوالة")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            walletMatchingEngine.updateTransactionStatus(txId, newStatus, reason, user.id, user.name, user.role.name)
-            snackbarMessage.value = "تم تحديث حالة الحوالة بنجاح"
-        }
-    }
-
-    fun ingestSms(sender: String, body: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "معالجة رسالة محفظة يدويًا")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = walletMatchingEngine.ingestSms(sender, body)
-            when (result) {
-                is IngestResult.Created -> {
-                    val statusText = if (result.isOutOfShift) "(خارج الدوام)" else "(مطابقة لشفت)"
-                    snackbarMessage.value = "تمت معالجة الحوالة بنجاح: ${result.tx.amount} ريال $statusText"
-                }
-                is IngestResult.Duplicate -> {
-                    snackbarMessage.value = "تنبيه: ${result.reason}"
-                }
-                is IngestResult.Unmatched -> {
-                    snackbarMessage.value = "وصلت رسالة غير مطابقة لمحافظ جيب/فلوسك/جوالي، تم حفظها في الصندوق"
-                }
-            }
-        }
-    }
-
-    fun reassignShift(txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.REASSIGN_TRANSFER, "إعادة إسناد حوالة")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val res = walletMatchingEngine.reassignShift(
-                txId = txId,
-                newShiftId = newShiftId,
-                cashierId = cashierId,
-                cashierName = cashierName,
-                userId = user.id,
-                userName = user.name,
-                userRole = user.role.name,
-                reason = reason
-            )
-            if (res.isSuccess) {
-                snackbarMessage.value = "تمت إعادة إسناد الحوالة للشفت بنجاح"
-            } else {
-                snackbarMessage.value = res.exceptionOrNull()?.message ?: "فشل إعادة الإسناد"
-            }
-        }
-    }
-
-    fun toggleGatewayServer() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تشغيل Gateway")) return
-        if (com.example.gateway.GatewayService.isServerRunning) {
-            com.example.gateway.GatewayService.stopGateway(getApplication())
-            snackbarMessage.value = "أُرسل طلب إيقاف خادم Gateway"
-        } else {
-            com.example.gateway.GatewayService.startGateway(getApplication(), gatewayPort.value)
-            snackbarMessage.value = "أُرسل طلب تشغيل خادم Gateway"
-        }
-    }
-    fun retryQueueItem(id: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة عنصر Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.retryNow(id)
-            snackbarMessage.value = "جاري إعادة محاولة إرسال العنصر..."
-        }
-    }
-
-    fun retryAllQueue() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة طابور Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.retryAllNow()
-            snackbarMessage.value = "جاري إعادة محاولة جميع عناصر طابور الانتظار..."
-        }
-    }
-
-    fun clearCompletedQueue() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تنظيف طابور Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.clearCompleted()
-            snackbarMessage.value = "تم تنظيف العناصر المكتملة"
-        }
-    }
-
-    fun getSmsForTransaction(txId: String): Flow<List<WalletSmsEntity>> {
-        return db.walletDao().getSmsForTransaction(txId)
-    }
-
     fun saveGeminiApiKey(key: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تغيير مفتاح AI")) return
@@ -1274,17 +1178,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 sessionManager.setIdleTimeoutMinutes(minutes)
                 autoLockMinutes.value = minutes.toString()
-            } else if (key == "gateway_token") {
-                val token = value.trim()
-                if (token.length < com.example.gateway.GatewaySecretStore.MIN_TOKEN_LENGTH) {
-                    snackbarMessage.value = "رمز Gateway يجب أن يكون 32 حرفًا على الأقل"
-                    return@launch
-                }
-                if (!com.example.gateway.GatewaySecretStore(getApplication()).saveToken(token)) {
-                    snackbarMessage.value = "تعذر حفظ رمز Gateway في التخزين الآمن"
-                    return@launch
-                }
-                db.settingsDao().deleteSetting("gateway_token")
             } else {
                 db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
             }
@@ -1294,16 +1187,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun getSystemSetting(key: String): String? {
         val user = _currentUser.value ?: return null
         if (!PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_SETTINGS)) {
-            withContext(Dispatchers.IO) { logUnauthorizedAttempt(user, AppPermission.MANAGE_SETTINGS, "قراءة إعدادات النظام") }
+            withContext(Dispatchers.IO) {
+                logUnauthorizedAttempt(user, AppPermission.MANAGE_SETTINGS, "قراءة إعدادات النظام")
+            }
             return null
         }
-        return withContext(Dispatchers.IO) {
-        if (key == "gateway_token") {
-            com.example.gateway.GatewaySecretStore(getApplication()).getToken()
-        } else {
-            db.settingsDao().getSetting(key)
-        }
-        }
+        return withContext(Dispatchers.IO) { db.settingsDao().getSetting(key) }
     }
 
     suspend fun askAi(prompt: String): String {

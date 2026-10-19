@@ -19,6 +19,7 @@ import com.example.data.local.migration.MIGRATION_1_2
 import com.example.data.local.migration.MIGRATION_2_3
 import com.example.data.local.migration.MIGRATION_3_4
 import com.example.data.local.migration.MIGRATION_4_5
+import com.example.data.local.migration.MIGRATION_5_6
 import com.example.domain.model.InventoryTxType
 import com.example.domain.model.PaymentMethod
 import com.example.domain.model.ShiftStatus
@@ -158,6 +159,9 @@ class DatabaseMigrationAndroidTest {
         )
         raw.execSQL("DROP TABLE IF EXISTS gateway_offline_queue")
         raw.execSQL("DROP INDEX IF EXISTS index_wallet_transactions_originalSmsId")
+        // Simulate a genuine version-5 database without the new proof-path column;
+        // otherwise Room's 5→6 migration would correctly reject an already-present column.
+        raw.execSQL("ALTER TABLE sales DROP COLUMN paymentProofPath")
         // Recreate the affected v4 table shape so MIGRATION_4_5 actually has to
         // add these columns. Lowering user_version alone leaves a v5 schema behind.
         raw.execSQL("ALTER TABLE debt_transactions DROP COLUMN shiftId")
@@ -181,7 +185,7 @@ class DatabaseMigrationAndroidTest {
         raw.close()
 
         val upgraded = Room.databaseBuilder(context, AppDatabase::class.java, dbName)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .allowMainThreadQueries()
             .build()
 
@@ -198,7 +202,8 @@ class DatabaseMigrationAndroidTest {
             assertEquals(0.0, migratedDebt.balanceBefore, 0.001)
             assertEquals("", migratedDebt.shiftId)
             assertEquals(1, upgraded.inventoryTransactionDao().getTransactionsByReference(sale.id).size)
-            assertEquals(5, upgraded.openHelper.readableDatabase.version)
+            assertEquals(6, upgraded.openHelper.readableDatabase.version)
+            assertEquals(null, upgraded.saleDao().getSaleById(sale.id)!!.paymentProofPath)
             assertEquals(0.0, upgraded.shiftDao().getShiftById(shift.id)!!.totalCashDebtPayments, 0.001)
             assertEquals(0.0, upgraded.shiftDao().getShiftById(shift.id)!!.totalWalletDebtPayments, 0.001)
             assertEquals(0, upgraded.gatewayQueueDao().getAllQueueItems().first().size)

@@ -23,7 +23,6 @@ import com.example.ui.shift.CloseShiftDialog
 import com.example.ui.shift.HandoverDialog
 import com.example.ui.shift.StartShiftDialog
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.wallet.WalletScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -62,14 +61,7 @@ class MainActivity : ComponentActivity() {
                     val auditLogs by viewModel.auditLogs.collectAsStateWithLifecycle()
                     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
                     val userProfiles by viewModel.userProfiles.collectAsStateWithLifecycle()
-                    val wallets by viewModel.wallets.collectAsStateWithLifecycle()
-                    val walletTransactions by viewModel.walletTransactions.collectAsStateWithLifecycle()
-                    val smsInbox by viewModel.smsInbox.collectAsStateWithLifecycle()
                     val aiInsights by viewModel.aiInsights.collectAsStateWithLifecycle()
-                    val queueItems by viewModel.allQueueItems.collectAsStateWithLifecycle()
-                    val isGatewayRunning by viewModel.isGatewayRunning.collectAsStateWithLifecycle()
-                    val gatewayIp by viewModel.gatewayIp.collectAsStateWithLifecycle()
-                    val gatewayPort by viewModel.gatewayPort.collectAsStateWithLifecycle()
                     val autoLockMinutes by viewModel.autoLockMinutes.collectAsStateWithLifecycle()
 
                     val showStartShiftDialog by viewModel.showStartShiftDialog.collectAsStateWithLifecycle()
@@ -77,6 +69,7 @@ class MainActivity : ComponentActivity() {
                     val showHandoverDialog by viewModel.showHandoverDialog.collectAsStateWithLifecycle()
                     val showPaymentDialog by viewModel.showPaymentDialog.collectAsStateWithLifecycle()
                     val lastCompletedSale by viewModel.lastCompletedSale.collectAsStateWithLifecycle()
+                    val lastCompletedSaleItems by viewModel.lastCompletedSaleItems.collectAsStateWithLifecycle()
                     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
                     val loginErrorMessage by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
                     val backupStatusMessage by viewModel.backupStatusMessage.collectAsStateWithLifecycle()
@@ -141,10 +134,6 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.navigateTo(AppScreen.ADMIN)
                                             },
-                                            onNavigateToWallets = {
-                                                viewModel.onUserActivity()
-                                                viewModel.navigateTo(AppScreen.WALLETS)
-                                            },
                                             onLockSession = {
                                                 viewModel.sessionManager.lockManually()
                                             },
@@ -176,13 +165,6 @@ class MainActivity : ComponentActivity() {
                                             shifts = allShifts,
                                             users = allUsers,
                                             logs = auditLogs,
-                                            wallets = wallets,
-                                            walletTransactions = walletTransactions,
-                                            smsInbox = smsInbox,
-                                            queueItems = queueItems,
-                                            isGatewayRunning = isGatewayRunning,
-                                            gatewayIp = gatewayIp,
-                                            gatewayPort = gatewayPort,
                                             backupStatusMessage = backupStatusMessage,
                                             onBack = {
                                                 viewModel.onUserActivity()
@@ -257,34 +239,6 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.deleteUser(uId)
                                             },
-                                            onUpdateWalletStatus = { txId, st, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.updateWalletTransactionStatus(txId, st, reason)
-                                            },
-                                            onReassignShift = { txId, newShiftId, cashierId, cashierName, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.reassignShift(txId, newShiftId, cashierId, cashierName, reason)
-                                            },
-                                            onToggleGateway = {
-                                                viewModel.onUserActivity()
-                                                viewModel.toggleGatewayServer()
-                                            },
-                                            onRetryQueueItem = { id ->
-                                                viewModel.onUserActivity()
-                                                viewModel.retryQueueItem(id)
-                                            },
-                                            onRetryAllQueue = {
-                                                viewModel.onUserActivity()
-                                                viewModel.retryAllQueue()
-                                            },
-                                            onClearCompletedQueue = {
-                                                viewModel.onUserActivity()
-                                                viewModel.clearCompletedQueue()
-                                            },
-                                            onIngestTestSms = { sender, body ->
-                                                viewModel.onUserActivity()
-                                                viewModel.ingestSms(sender, body)
-                                            },
                                             onExportSalesCsv = { uri ->
                                                 viewModel.onUserActivity()
                                                 viewModel.exportSalesCsv(uri)
@@ -318,35 +272,8 @@ class MainActivity : ComponentActivity() {
                                             onAskAi = { q -> viewModel.askAi(q) },
                                             onSaveApiKey = { k -> viewModel.saveGeminiApiKey(k) },
                                             onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) },
-                                             onLoadSetting = { key -> viewModel.getSystemSetting(key) },
-                                             autoLockMinutes = autoLockMinutes
-                                        )
-                                    }
-                                }
-                                AppScreen.WALLETS -> {
-                                    val user = currentUser
-                                    if (user != null) {
-                                        WalletScreen(
-                                            currentUser = user,
-                                            currentShift = currentShift,
-                                            wallets = wallets,
-                                            transactions = walletTransactions,
-                                            onBack = {
-                                                viewModel.onUserActivity()
-                                                viewModel.navigateTo(AppScreen.POS)
-                                            },
-                                            onUpdateStatus = { txId, status, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.updateWalletTransactionStatus(txId, status, reason)
-                                            },
-                                            onIngestTestSms = { sender: String, body: String ->
-                                                viewModel.onUserActivity()
-                                                viewModel.ingestSms(sender, body)
-                                            },
-                                            onReassignShift = { txId, newShiftId, cashierId, cashierName, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.reassignShift(txId, newShiftId, cashierId, cashierName, reason)
-                                            }
+                                            onLoadSetting = { key -> viewModel.getSystemSetting(key) },
+                                            autoLockMinutes = autoLockMinutes
                                         )
                                     }
                                 }
@@ -405,8 +332,8 @@ class MainActivity : ComponentActivity() {
                                     totalAmount = total,
                                     customers = eligibleDebtCustomers,
                                     onDismiss = { viewModel.showPaymentDialog.value = false },
-                                    onConfirmSale = { method, cash, ref, custId ->
-                                        viewModel.executeSale(method, cash, ref, custId)
+                                    onConfirmSale = { method, cash, ref, custId, proofPath ->
+                                        viewModel.executeSale(method, cash, ref, custId, proofPath)
                                     }
                                 )
                             }
@@ -416,12 +343,13 @@ class MainActivity : ComponentActivity() {
                             if (completed != null) {
                                 ReceiptDialog(
                                     sale = completed,
-                                    items = cartItems,
+                                    items = lastCompletedSaleItems,
                                     onPrint = {
                                         viewModel.snackbarMessage.value = "جاري إرسال الفاتورة إلى طابعة البلوتوث/الشبكة..."
                                     },
                                     onDismiss = {
                                         viewModel.lastCompletedSale.value = null
+                                        viewModel.lastCompletedSaleItems.value = emptyList()
                                     }
                                 )
                             }
