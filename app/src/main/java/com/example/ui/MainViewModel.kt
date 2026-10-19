@@ -807,8 +807,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 snackbarMessage.value = "لا يمكن حذف حساب المالك"
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
-                snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
+            if (target.role != UserRole.CASHIER) {
+                snackbarMessage.value = "يمكن حذف حسابات الكاشير فقط؛ لا يمكن حذف حساب المالك"
                 return@launch
             }
             db.userDao().deleteUserById(target.id)
@@ -835,8 +835,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onResult(false, "ليس لديك صلاحية تغيير كلمة السر")
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && user.id != target.id && target.role != UserRole.CASHIER) {
-                onResult(false, "المدير يستطيع تغيير PIN للكاشير فقط")
+            if (user.id != target.id && target.role != UserRole.CASHIER) {
+                onResult(false, "يمكن للمالك تغيير PIN لحساب الكاشير فقط")
                 return@launch
             }
             if (user.id == target.id && !passwordHasher.verify(currentPin, target.pinSalt, target.pinHash)) {

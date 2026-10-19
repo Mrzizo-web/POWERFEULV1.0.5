@@ -85,7 +85,7 @@ class ShiftEngine(private val db: AppDatabase) {
         if (!PermissionChecker.hasPermission(user.role, AppPermission.OPERATE_SHIFT)) {
             return@withTransaction ShiftResult.Error("ليس لديك صلاحية إغلاق الشفت")
         }
-        if (shift.userId != user.id && user.role !in setOf(UserRole.OWNER, UserRole.ADMIN)) {
+        if (shift.userId != user.id && user.role != UserRole.OWNER) {
             return@withTransaction ShiftResult.Error("لا يمكنك إغلاق شفت مستخدم آخر")
         }
         if (shift.status != ShiftStatus.OPEN) {
