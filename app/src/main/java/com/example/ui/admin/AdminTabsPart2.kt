@@ -947,7 +947,7 @@ fun AdminEmployeesTab(
     onToggleActive: (userId: String, active: Boolean) -> Unit,
     onRemoveUser: (userId: String) -> Unit = {},
     canManageUsers: Boolean = true,
-    allowedRoles: List<UserRole> = UserRole.values().filter { it != UserRole.OWNER }
+    allowedRoles: List<UserRole> = listOf(UserRole.CASHIER)
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var userPendingRemoval by remember { mutableStateOf<UserEntity?>(null) }

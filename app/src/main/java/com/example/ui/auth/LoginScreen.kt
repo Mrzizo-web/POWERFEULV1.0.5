@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.example.domain.model.UserProfile
+import com.example.domain.model.UserRole
 import java.security.MessageDigest
 
 @Composable
@@ -129,7 +130,7 @@ fun LoginScreen(
                                 },
                                 label = {
                                     Text(
-                                        "${profile.name} (${profile.role.titleAr})" +
+                                        "${if (profile.role == UserRole.OWNER) "المالك" else profile.name} (${profile.role.titleAr})" +
                                             if (profile.isRecoveryAccount) " — استرداد" else ""
                                     )
                                 },

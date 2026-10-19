@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.*
+import com.example.ui.pos.PaymentProofDialog
 
 @Composable
 fun AdminProductsTab(
@@ -714,6 +715,7 @@ fun AdminSalesTab(
 ) {
     var voidingSaleId by remember { mutableStateOf<String?>(null) }
     var voidReason by remember { mutableStateOf("") }
+    var viewingProofPath by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل المبيعات والفواتير (${sales.size})", fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -735,6 +737,11 @@ fun AdminSalesTab(
                             Text("المبلغ: ${s.netAmount} ريال • ${s.paymentMethod.titleAr} • المحاسب: ${s.userName}", fontSize = 12.sp)
                             if (s.status == "VOIDED") {
                                 Text("ملغاة: ${s.voidReason}", color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
+                            }
+                            if (!s.paymentProofPath.isNullOrBlank()) {
+                                TextButton(onClick = { viewingProofPath = s.paymentProofPath }) {
+                                    Text("عرض إثبات الدفع")
+                                }
                             }
                         }
                         if (s.status != "VOIDED") {
@@ -776,5 +783,9 @@ fun AdminSalesTab(
                 TextButton(onClick = { voidingSaleId = null }) { Text("إلغاء") }
             }
         )
+    }
+    
+    viewingProofPath?.let { path ->
+        PaymentProofDialog(path = path, onDismiss = { viewingProofPath = null })
     }
 }
