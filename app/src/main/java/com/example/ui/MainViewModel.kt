@@ -11,6 +11,7 @@ import com.example.data.seed.DatabaseSeeder
 import com.example.data.local.entity.*
 import com.example.domain.model.*
 import com.example.security.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -36,6 +37,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val autoLockMinutes = MutableStateFlow(SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES.toString())
 
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
+    private val databaseInitialization = CompletableDeferred<Boolean>()
 
     init {
         // Seed the local owner and initial catalog before the login screen is used.
@@ -51,8 +53,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     ?: SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES
                 sessionManager.setIdleTimeoutMinutes(configuredIdleMinutes)
                 autoLockMinutes.value = configuredIdleMinutes.toString()
+                databaseInitialization.complete(true)
 
             } catch (error: Exception) {
+                databaseInitialization.complete(false)
                 withContext(Dispatchers.Main) {
                     loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات: ${error.localizedMessage ?: "خطأ غير معروف"}"
                 }
@@ -200,6 +204,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
+            if (!databaseInitialization.await()) {
+                loginErrorMessage.value = "تعذر تهيئة قاعدة البيانات. أعد فتح التطبيق قبل تسجيل الدخول."
+                return@launch
+            }
             val user = db.userDao().getUserById(userId)
             if (user == null) {
                 loginErrorMessage.value = "المستخدم غير موجود أو غير نشط"

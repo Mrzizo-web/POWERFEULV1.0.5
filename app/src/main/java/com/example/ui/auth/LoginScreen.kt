@@ -129,8 +129,10 @@ fun LoginScreen(
                                     onClearError()
                                 },
                                 label = {
+                                    val displayName = if (profile.role == UserRole.OWNER) "المالك" else profile.name
+                                    val displayRole = if (profile.role == UserRole.OWNER) UserRole.OWNER.titleAr else UserRole.CASHIER.titleAr
                                     Text(
-                                        "${if (profile.role == UserRole.OWNER) "المالك" else profile.name} (${profile.role.titleAr})" +
+                                        "$displayName ($displayRole)" +
                                             if (profile.isRecoveryAccount) " — استرداد" else ""
                                     )
                                 },
