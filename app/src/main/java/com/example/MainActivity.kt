@@ -23,7 +23,6 @@ import com.example.ui.shift.CloseShiftDialog
 import com.example.ui.shift.HandoverDialog
 import com.example.ui.shift.StartShiftDialog
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.wallet.WalletScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -62,14 +61,7 @@ class MainActivity : ComponentActivity() {
                     val auditLogs by viewModel.auditLogs.collectAsStateWithLifecycle()
                     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
                     val userProfiles by viewModel.userProfiles.collectAsStateWithLifecycle()
-                    val wallets by viewModel.wallets.collectAsStateWithLifecycle()
-                    val walletTransactions by viewModel.walletTransactions.collectAsStateWithLifecycle()
-                    val smsInbox by viewModel.smsInbox.collectAsStateWithLifecycle()
                     val aiInsights by viewModel.aiInsights.collectAsStateWithLifecycle()
-                    val queueItems by viewModel.allQueueItems.collectAsStateWithLifecycle()
-                    val isGatewayRunning by viewModel.isGatewayRunning.collectAsStateWithLifecycle()
-                    val gatewayIp by viewModel.gatewayIp.collectAsStateWithLifecycle()
-                    val gatewayPort by viewModel.gatewayPort.collectAsStateWithLifecycle()
                     val autoLockMinutes by viewModel.autoLockMinutes.collectAsStateWithLifecycle()
 
                     val showStartShiftDialog by viewModel.showStartShiftDialog.collectAsStateWithLifecycle()
@@ -140,10 +132,6 @@ class MainActivity : ComponentActivity() {
                                             onNavigateToAdmin = {
                                                 viewModel.onUserActivity()
                                                 viewModel.navigateTo(AppScreen.ADMIN)
-                                            },
-                                            onNavigateToWallets = {
-                                                viewModel.onUserActivity()
-                                                viewModel.navigateTo(AppScreen.WALLETS)
                                             },
                                             onLockSession = {
                                                 viewModel.sessionManager.lockManually()
@@ -257,34 +245,6 @@ class MainActivity : ComponentActivity() {
                                                 viewModel.onUserActivity()
                                                 viewModel.deleteUser(uId)
                                             },
-                                            onUpdateWalletStatus = { txId, st, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.updateWalletTransactionStatus(txId, st, reason)
-                                            },
-                                            onReassignShift = { txId, newShiftId, cashierId, cashierName, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.reassignShift(txId, newShiftId, cashierId, cashierName, reason)
-                                            },
-                                            onToggleGateway = {
-                                                viewModel.onUserActivity()
-                                                viewModel.toggleGatewayServer()
-                                            },
-                                            onRetryQueueItem = { id ->
-                                                viewModel.onUserActivity()
-                                                viewModel.retryQueueItem(id)
-                                            },
-                                            onRetryAllQueue = {
-                                                viewModel.onUserActivity()
-                                                viewModel.retryAllQueue()
-                                            },
-                                            onClearCompletedQueue = {
-                                                viewModel.onUserActivity()
-                                                viewModel.clearCompletedQueue()
-                                            },
-                                            onIngestTestSms = { sender, body ->
-                                                viewModel.onUserActivity()
-                                                viewModel.ingestSms(sender, body)
-                                            },
                                             onExportSalesCsv = { uri ->
                                                 viewModel.onUserActivity()
                                                 viewModel.exportSalesCsv(uri)
@@ -320,33 +280,6 @@ class MainActivity : ComponentActivity() {
                                             onSaveSetting = { k, v -> viewModel.saveSystemSetting(k, v) },
                                              onLoadSetting = { key -> viewModel.getSystemSetting(key) },
                                              autoLockMinutes = autoLockMinutes
-                                        )
-                                    }
-                                }
-                                AppScreen.WALLETS -> {
-                                    val user = currentUser
-                                    if (user != null) {
-                                        WalletScreen(
-                                            currentUser = user,
-                                            currentShift = currentShift,
-                                            wallets = wallets,
-                                            transactions = walletTransactions,
-                                            onBack = {
-                                                viewModel.onUserActivity()
-                                                viewModel.navigateTo(AppScreen.POS)
-                                            },
-                                            onUpdateStatus = { txId, status, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.updateWalletTransactionStatus(txId, status, reason)
-                                            },
-                                            onIngestTestSms = { sender: String, body: String ->
-                                                viewModel.onUserActivity()
-                                                viewModel.ingestSms(sender, body)
-                                            },
-                                            onReassignShift = { txId, newShiftId, cashierId, cashierName, reason ->
-                                                viewModel.onUserActivity()
-                                                viewModel.reassignShift(txId, newShiftId, cashierId, cashierName, reason)
-                                            }
                                         )
                                     }
                                 }
@@ -405,8 +338,8 @@ class MainActivity : ComponentActivity() {
                                     totalAmount = total,
                                     customers = eligibleDebtCustomers,
                                     onDismiss = { viewModel.showPaymentDialog.value = false },
-                                    onConfirmSale = { method, cash, ref, custId ->
-                                        viewModel.executeSale(method, cash, ref, custId)
+                                    onConfirmSale = { method, cash, ref, custId, proofPath ->
+                                        viewModel.executeSale(method, cash, ref, custId, proofPath)
                                     }
                                 )
                             }

@@ -32,23 +32,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val shiftEngine = ShiftEngine(db)
     val purchaseEngine = PurchaseEngine(db, inventoryEngine)
     val powerAiEngine = PowerAiEngine(db)
-    val walletMatchingEngine = WalletMatchingEngine(db)
     val backupRestoreEngine = BackupRestoreEngine(application, db)
-    val gatewaySyncEngine = GatewaySyncEngine(db, viewModelScope, autoStartRetry = false)
-
-    val isGatewayRunning = MutableStateFlow(false)
-    val gatewayPort = MutableStateFlow(8080)
-    val gatewayIp = MutableStateFlow(com.example.util.NetworkUtils.getLocalIpAddress())
-    val autoLockMinutes = MutableStateFlow(SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES.toString())
-
-    val pendingQueue: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.pendingQueue
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val pendingQueueCount: StateFlow<Int> = gatewaySyncEngine.pendingCount
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-
-    val allQueueItems: StateFlow<List<GatewayQueueEntity>> = gatewaySyncEngine.allQueue
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
@@ -58,6 +42,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 DatabaseSeeder.seedIfNeeded(db)
+                PaymentProofRetention.cleanupExpired(File(application.filesDir, "payment_proofs"))
                 val configuredIdleMinutes = db.settingsDao()
                     .getSetting("auto_lock_minutes")
                     ?.toIntOrNull()
@@ -83,16 +68,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Read the real foreground-service state; starting a request is not success.
-        viewModelScope.launch {
-            while (true) {
-                isGatewayRunning.value = com.example.gateway.GatewayService.isServerRunning
-                if (isGatewayRunning.value) {
-                    gatewayIp.value = com.example.util.NetworkUtils.getLocalIpAddress()
-                }
-                delay(750L)
-            }
-        }
     }
 
     val currentUser: StateFlow<UserEntity?> = _currentUser.asStateFlow()
@@ -188,15 +163,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val auditLogs: StateFlow<List<AuditLogEntity>> = db.auditLogDao().getRecentLogs()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val wallets: StateFlow<List<WalletEntity>> = db.walletDao().getAllWallets()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val walletTransactions: StateFlow<List<WalletTransactionEntity>> = db.walletDao().getAllTransactions()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    val smsInbox: StateFlow<List<WalletSmsEntity>> = db.walletDao().getAllSms()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val aiInsights: StateFlow<List<AiInsight>> = flow {
@@ -441,7 +407,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun executeSale(paymentMethod: PaymentMethod, cashReceived: Double, reference: String, customerId: String?) {
+    fun executeSale(paymentMethod: PaymentMethod, cashReceived: Double, reference: String, customerId: String?, paymentProofPath: String? = null) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.PROCESS_SALE, "تنفيذ المبيعات")) return
         val shift = currentShift.value
@@ -462,7 +428,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     paymentMethod = paymentMethod,
                     cashReceived = cashReceived,
                     paymentReference = reference,
-                    selectedCustomerId = customerId
+                    selectedCustomerId = customerId,
+                    paymentProofPath = paymentProofPath
                 )
                 if (res is SaleResult.Success) {
                     lastCompletedSale.value = res.sale
@@ -741,8 +708,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addEmployee(name: String, username: String, pin: String, role: UserRole, phone: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_EMPLOYEES, "إضافة موظف")) return
-        if (user.role == UserRole.ADMIN && role != UserRole.CASHIER) {
-            snackbarMessage.value = "المدير يستطيع إنشاء حسابات الكاشير فقط؛ الأدوار الإشرافية متاحة للمالك"
+        if (role != UserRole.CASHIER) {
+            snackbarMessage.value = "النظام يدعم حسابي المالك والكاشير فقط"
             return
         }
         val cleanName = name.trim()
@@ -788,7 +755,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 snackbarMessage.value = "لا يمكن تعطيل حساب المالك"
                 return@launch
             }
-            if (user.role == UserRole.ADMIN && target.role != UserRole.CASHIER) {
+            if (target.role != UserRole.CASHIER) {
                 snackbarMessage.value = "المدير يستطيع إدارة حسابات الكاشير فقط"
                 return@launch
             }
@@ -1144,99 +1111,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 backupStatusMessage.value = "فشلت الاستعادة ولم تُعتمد البيانات: ${e.localizedMessage ?: "خطأ غير معروف"}"
             }
         }
-    }
-
-    fun updateWalletTransactionStatus(txId: String, newStatus: WalletTransferStatus, reason: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تعديل حالة حوالة")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            walletMatchingEngine.updateTransactionStatus(txId, newStatus, reason, user.id, user.name, user.role.name)
-            snackbarMessage.value = "تم تحديث حالة الحوالة بنجاح"
-        }
-    }
-
-    fun ingestSms(sender: String, body: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "معالجة رسالة محفظة يدويًا")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = walletMatchingEngine.ingestSms(sender, body)
-            when (result) {
-                is IngestResult.Created -> {
-                    val statusText = if (result.isOutOfShift) "(خارج الدوام)" else "(مطابقة لشفت)"
-                    snackbarMessage.value = "تمت معالجة الحوالة بنجاح: ${result.tx.amount} ريال $statusText"
-                }
-                is IngestResult.Duplicate -> {
-                    snackbarMessage.value = "تنبيه: ${result.reason}"
-                }
-                is IngestResult.Unmatched -> {
-                    snackbarMessage.value = "وصلت رسالة غير مطابقة لمحافظ جيب/فلوسك/جوالي، تم حفظها في الصندوق"
-                }
-            }
-        }
-    }
-
-    fun reassignShift(txId: String, newShiftId: String, cashierId: String, cashierName: String, reason: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.REASSIGN_TRANSFER, "إعادة إسناد حوالة")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val res = walletMatchingEngine.reassignShift(
-                txId = txId,
-                newShiftId = newShiftId,
-                cashierId = cashierId,
-                cashierName = cashierName,
-                userId = user.id,
-                userName = user.name,
-                userRole = user.role.name,
-                reason = reason
-            )
-            if (res.isSuccess) {
-                snackbarMessage.value = "تمت إعادة إسناد الحوالة للشفت بنجاح"
-            } else {
-                snackbarMessage.value = res.exceptionOrNull()?.message ?: "فشل إعادة الإسناد"
-            }
-        }
-    }
-
-    fun toggleGatewayServer() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_SETTINGS, "تشغيل Gateway")) return
-        if (com.example.gateway.GatewayService.isServerRunning) {
-            com.example.gateway.GatewayService.stopGateway(getApplication())
-            snackbarMessage.value = "أُرسل طلب إيقاف خادم Gateway"
-        } else {
-            com.example.gateway.GatewayService.startGateway(getApplication(), gatewayPort.value)
-            snackbarMessage.value = "أُرسل طلب تشغيل خادم Gateway"
-        }
-    }
-    fun retryQueueItem(id: String) {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة عنصر Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.retryNow(id)
-            snackbarMessage.value = "جاري إعادة محاولة إرسال العنصر..."
-        }
-    }
-
-    fun retryAllQueue() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "إعادة محاولة طابور Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.retryAllNow()
-            snackbarMessage.value = "جاري إعادة محاولة جميع عناصر طابور الانتظار..."
-        }
-    }
-
-    fun clearCompletedQueue() {
-        val user = _currentUser.value ?: return
-        if (!requirePermission(user, AppPermission.MANAGE_WALLETS, "تنظيف طابور Gateway")) return
-        viewModelScope.launch(Dispatchers.IO) {
-            gatewaySyncEngine.clearCompleted()
-            snackbarMessage.value = "تم تنظيف العناصر المكتملة"
-        }
-    }
-
-    fun getSmsForTransaction(txId: String): Flow<List<WalletSmsEntity>> {
-        return db.walletDao().getSmsForTransaction(txId)
     }
 
     fun saveGeminiApiKey(key: String) {
