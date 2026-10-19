@@ -14,30 +14,28 @@ class PermissionCheckerUnitTest {
     }
 
     @Test
-    fun managerCanManageEmployeesButCannotChangeSettingsOrBusinessData() {
-        assertTrue(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.ACCESS_ADMIN))
-        assertTrue(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.MANAGE_EMPLOYEES))
-        assertFalse(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.MANAGE_SETTINGS))
-        assertFalse(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.PROCESS_SALE))
-        assertFalse(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.MANAGE_INVENTORY))
-        assertFalse(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.VIEW_REPORTS))
-        assertFalse(PermissionChecker.hasPermission(UserRole.ADMIN, AppPermission.REASSIGN_TRANSFER))
-    }
-
-    @Test
-    fun cashierCanSellAndOperateShiftButCannotManageInventoryOrWallets() {
+    fun cashierCanSellAndOperateShiftButCannotManageOwnerFunctions() {
         assertTrue(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.PROCESS_SALE))
         assertTrue(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.OPERATE_SHIFT))
+        assertTrue(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.MANAGE_CUSTOMERS))
+        assertTrue(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.RECORD_DEBT_PAYMENT))
+        assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.ACCESS_ADMIN))
         assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.MANAGE_SETTINGS))
+        assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.MANAGE_EMPLOYEES))
+        assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.VOID_SALE))
         assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.ADJUST_STOCK))
         assertFalse(PermissionChecker.hasPermission(UserRole.CASHIER, AppPermission.MANAGE_WALLETS))
     }
 
     @Test
-    fun inventoryManagerCanAdjustStockButCannotManageEmployeesOrSettings() {
-        assertTrue(PermissionChecker.hasPermission(UserRole.INVENTORY_MANAGER, AppPermission.ADJUST_STOCK))
-        assertTrue(PermissionChecker.hasPermission(UserRole.INVENTORY_MANAGER, AppPermission.MANAGE_RECIPES))
-        assertFalse(PermissionChecker.hasPermission(UserRole.INVENTORY_MANAGER, AppPermission.MANAGE_EMPLOYEES))
-        assertFalse(PermissionChecker.hasPermission(UserRole.INVENTORY_MANAGER, AppPermission.MANAGE_SETTINGS))
+    fun legacyRolesHaveNoPrivilegesAndMustBeNormalizedToTheTwoRoleModel() {
+        for (legacyRole in listOf(UserRole.ADMIN, UserRole.SUPERVISOR, UserRole.INVENTORY_MANAGER)) {
+            for (permission in AppPermission.values()) {
+                assertFalse(
+                    "${legacyRole.name} must not retain ${permission.name}",
+                    PermissionChecker.hasPermission(legacyRole, permission)
+                )
+            }
+        }
     }
 }
