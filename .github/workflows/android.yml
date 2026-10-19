@@ -41,6 +41,18 @@ jobs:
             echo 'ERROR: POS-only build must not register Gateway services or boot receivers.'
             exit 1
           fi
+          for path in \
+            app/src/main/java/com/example/gateway \
+            app/src/main/java/com/example/data/engine/GatewaySyncEngine.kt \
+            app/src/main/java/com/example/data/engine/WalletMatchingEngine.kt \
+            app/src/main/java/com/example/data/engine/WalletParser.kt \
+            app/src/main/java/com/example/ui/admin/AdminWalletTab.kt \
+            app/src/main/java/com/example/ui/wallet/WalletScreen.kt; do
+            if [[ -e "$path" ]]; then
+              echo "ERROR: paused Gateway/SMS runtime file still present: $path"
+              exit 1
+            fi
+          done
           if grep -R --include='*.kt' -n 'HAWALATY\|حوالتي' app/src/main; then
             echo 'ERROR: legacy Hawalaty wallet reference found in POS source.'
             exit 1
@@ -93,9 +105,4 @@ jobs:
           profile: pixel_2
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          # Gateway/SMS delivery is paused in the POS-only app. Exclude only its legacy
-          # network/ingestion fixtures; keep sales, inventory, shifts, debts, migrations,
-          # backups, and wallet-proof instrumentation enabled.
-          script: >-
-            gradle connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.notClass=com.example.GatewayQueueAtomicRetryAndroidTest,com.example.GatewayQueueClaimAndroidTest,com.example.GatewayServerSecurityAndroidTest,com.example.GatewayServerWalletIngestionAndroidTest,com.example.WalletShiftIntegrationTest
+          script: gradle connectedDebugAndroidTest

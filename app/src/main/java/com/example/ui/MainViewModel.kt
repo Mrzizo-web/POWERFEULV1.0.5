@@ -96,6 +96,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val showHandoverDialog = MutableStateFlow(false)
     val showPaymentDialog = MutableStateFlow(false)
     private val isExecutingSale = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isAddingRawMaterial = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isAddingRawStock = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isSavingRecipe = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isRecordingExpense = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isCreatingPurchase = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isRecordingDebtPayment = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isRecordingWaste = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val isApplyingStockAdjustment = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val lastCompletedSale = MutableStateFlow<SaleEntity?>(null)
     val lastCompletedSaleItems = MutableStateFlow<List<CartItem>>(emptyList())
@@ -491,6 +499,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addRawMaterial(name: String, unit: String, initialStock: Double, minStock: Double, costPerUnit: Double) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_INVENTORY, "إضافة مادة خام")) return
+        if (!isAddingRawMaterial.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية إضافة مادة خام قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 InventoryAdjustmentEngine(db).addRawMaterial(
@@ -507,6 +519,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر إضافة المادة الخام"
+            } finally {
+                isAddingRawMaterial.set(false)
             }
         }
     }
@@ -514,6 +528,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addRawMaterialStock(materialId: String, amount: Double, note: String = "") {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_INVENTORY, "إضافة رصيد مخزون")) return
+        if (!isAddingRawStock.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية تحديث المخزون قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 InventoryAdjustmentEngine(db).addStock(materialId, amount, user, note)
@@ -522,6 +540,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر تحديث رصيد المخزون"
+            } finally {
+                isAddingRawStock.set(false)
             }
         }
     }
@@ -529,6 +549,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun addRecipe(name: String, productId: String, items: List<RecipeItemEntity>, notes: String = "") {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_RECIPES, "إدارة الوصفات")) return
+        if (!isSavingRecipe.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية حفظ الوصفة قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 com.example.data.engine.RecipeManager(db).saveRecipe(name, productId, items, notes, user)
@@ -536,6 +560,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 snackbarMessage.value = error.message ?: "تعذر حفظ الوصفة"
+            } finally {
+                isSavingRecipe.set(false)
             }
         }
     }
@@ -871,6 +897,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_EXPENSES, "تسجيل مصروف")) return
         val shiftId = currentShift.value?.id.orEmpty()
+        if (!isRecordingExpense.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية تسجيل المصروف قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 ExpenseEngine(db).recordExpense(
@@ -888,6 +918,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر تسجيل المصروف"
+            } finally {
+                isRecordingExpense.set(false)
             }
         }
     }
@@ -895,6 +927,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun createPurchase(supplierId: String, supplierName: String, invoiceNo: String, materialId: String, qty: Double, unit: String, unitPrice: Double) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.MANAGE_PURCHASES, "تسجيل فاتورة شراء")) return
+        if (!isCreatingPurchase.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية تسجيل الشراء قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val material = db.rawMaterialDao().getRawMaterialById(materialId)
@@ -922,6 +958,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.Main) {
                     snackbarMessage.value = error.message ?: "تعذر تسجيل فاتورة الشراء"
                 }
+            } finally {
+                isCreatingPurchase.set(false)
             }
         }
     }
@@ -930,6 +968,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.RECORD_DEBT_PAYMENT, "سداد دين")) return
         val shiftId = currentShift.value?.id.orEmpty()
+        if (!isRecordingDebtPayment.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية تحصيل الدين قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 DebtEngine(db).payDebt(
@@ -945,6 +987,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر تسجيل سداد الدين"
+            } finally {
+                isRecordingDebtPayment.set(false)
             }
         }
     }
@@ -957,6 +1001,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "DAMAGED" -> WasteReason.DAMAGED
             "SPOILED" -> WasteReason.SPOILED
             else -> WasteReason.OTHER
+        }
+        if (!isRecordingWaste.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية تسجيل الهدر قيد التنفيذ؛ انتظر اكتمالها"
+            return
         }
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -973,6 +1021,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر تسجيل الهدر"
+            } finally {
+                isRecordingWaste.set(false)
             }
         }
     }
@@ -980,6 +1030,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun applyStockAdjustment(materialId: String, actualStock: Double, reason: String) {
         val user = _currentUser.value ?: return
         if (!requirePermission(user, AppPermission.ADJUST_STOCK, "تسوية جردية")) return
+        if (!isApplyingStockAdjustment.compareAndSet(false, true)) {
+            snackbarMessage.value = "عملية التسوية الجردية قيد التنفيذ؛ انتظر اكتمالها"
+            return
+        }
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 InventoryAdjustmentEngine(db).applyStockAdjustment(materialId, actualStock, reason, user)
@@ -988,6 +1042,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 snackbarMessage.value = error.message ?: "تعذر تنفيذ التسوية الجردية"
+            } finally {
+                isApplyingStockAdjustment.set(false)
             }
         }
     }

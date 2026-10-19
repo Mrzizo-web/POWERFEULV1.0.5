@@ -79,37 +79,8 @@ object DatabaseSeeder {
             }
         }
 
-        // Seed Wallets if not present
-        val wallets = db.walletDao().getAllWalletsSync()
-        if (wallets.isEmpty()) {
-            db.walletDao().insertWallet(
-                WalletEntity(
-                    id = "wallet-jeeb",
-                    code = "JEEB",
-                    name = "جيب",
-                    enabled = true,
-                    iconName = "account_balance_wallet"
-                )
-            )
-            db.walletDao().insertWallet(
-                WalletEntity(
-                    id = "wallet-floosak",
-                    code = "FLOOSAK",
-                    name = "فلوسك",
-                    enabled = true,
-                    iconName = "payments"
-                )
-            )
-            db.walletDao().insertWallet(
-                WalletEntity(
-                    id = "wallet-jawali",
-                    code = "JAWALI",
-                    name = "جوالي",
-                    enabled = true,
-                    iconName = "phone_android"
-                )
-            )
-        }
+        // Legacy wallet/SMS Room tables are retained for upgrade/data compatibility only.
+        // The POS-only build does not seed, ingest, match, or display wallet messages.
 
         // Seed categories & products if none
         val products = db.productDao().getAllProductsSync()
