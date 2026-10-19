@@ -70,7 +70,6 @@ fun AdminMainScreen(
     onAskAi: suspend (String) -> String = { "" },
     onSaveApiKey: (String) -> Unit = {},
     onSaveSetting: (key: String, value: String) -> Unit = { _, _ -> },
-    onLoadSetting: suspend (key: String) -> String? = { null },
     autoLockMinutes: String = "5"
 ) {
     var selectedTab by remember { mutableStateOf(AdminTab.PRODUCTS) }
@@ -214,7 +213,7 @@ fun AdminMainScreen(
                     )
                     AdminTab.REPORTS -> AdminReportsTab(sales, expenses, saleItems)
                     AdminTab.AUDIT_LOG -> AdminAuditLogTab(logs)
-                    AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting, autoLockMinutes, onLoadSetting)
+                    AdminTab.SETTINGS -> AdminSettingsTab(users, onSaveSetting, autoLockMinutes)
                 }
             }
         }

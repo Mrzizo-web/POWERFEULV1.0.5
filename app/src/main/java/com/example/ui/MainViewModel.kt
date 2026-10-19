@@ -33,6 +33,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val purchaseEngine = PurchaseEngine(db, inventoryEngine)
     val powerAiEngine = PowerAiEngine(db)
     val backupRestoreEngine = BackupRestoreEngine(application, db)
+    val autoLockMinutes = MutableStateFlow(SessionManager.DEFAULT_IDLE_TIMEOUT_MINUTES.toString())
 
     private val _currentUser = MutableStateFlow<UserEntity?>(null)
 
@@ -1148,38 +1149,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 sessionManager.setIdleTimeoutMinutes(minutes)
                 autoLockMinutes.value = minutes.toString()
-            } else if (key == "gateway_token") {
-                val token = value.trim()
-                if (token.length < com.example.gateway.GatewaySecretStore.MIN_TOKEN_LENGTH) {
-                    snackbarMessage.value = "رمز Gateway يجب أن يكون 32 حرفًا على الأقل"
-                    return@launch
-                }
-                if (!com.example.gateway.GatewaySecretStore(getApplication()).saveToken(token)) {
-                    snackbarMessage.value = "تعذر حفظ رمز Gateway في التخزين الآمن"
-                    return@launch
-                }
-                db.settingsDao().deleteSetting("gateway_token")
             } else {
                 db.settingsDao().setSetting(com.example.data.local.entity.CafeteriaSettingEntity(key, value))
             }
             withContext(Dispatchers.Main) { snackbarMessage.value = "تم حفظ الإعداد بنجاح" }
         }
     }
-    suspend fun getSystemSetting(key: String): String? {
-        val user = _currentUser.value ?: return null
-        if (!PermissionChecker.hasPermission(user.role, AppPermission.MANAGE_SETTINGS)) {
-            withContext(Dispatchers.IO) { logUnauthorizedAttempt(user, AppPermission.MANAGE_SETTINGS, "قراءة إعدادات النظام") }
-            return null
-        }
-        return withContext(Dispatchers.IO) {
-        if (key == "gateway_token") {
-            com.example.gateway.GatewaySecretStore(getApplication()).getToken()
-        } else {
-            db.settingsDao().getSetting(key)
-        }
-        }
-    }
-
     suspend fun askAi(prompt: String): String {
         return powerAiEngine.processQuery(prompt)
     }
