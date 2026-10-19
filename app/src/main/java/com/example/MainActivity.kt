@@ -164,13 +164,6 @@ class MainActivity : ComponentActivity() {
                                             shifts = allShifts,
                                             users = allUsers,
                                             logs = auditLogs,
-                                            wallets = wallets,
-                                            walletTransactions = walletTransactions,
-                                            smsInbox = smsInbox,
-                                            queueItems = queueItems,
-                                            isGatewayRunning = isGatewayRunning,
-                                            gatewayIp = gatewayIp,
-                                            gatewayPort = gatewayPort,
                                             backupStatusMessage = backupStatusMessage,
                                             onBack = {
                                                 viewModel.onUserActivity()
