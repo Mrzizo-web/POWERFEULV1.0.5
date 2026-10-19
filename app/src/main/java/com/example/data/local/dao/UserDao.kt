@@ -37,6 +37,9 @@ interface UserDao {
     @Query("SELECT COUNT(*) FROM users")
     suspend fun countUsers(): Int
 
+    @Query("SELECT * FROM users ORDER BY name ASC")
+    suspend fun getAllUsersSync(): List<UserEntity>
+
     @Query("SELECT COUNT(*) FROM users WHERE isActive = 1")
     suspend fun countActiveUsers(): Int
 

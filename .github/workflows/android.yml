@@ -36,6 +36,11 @@ jobs:
             echo 'ERROR: POS must not request SMS permissions; SMS belongs to the independent Gateway.'
             exit 1
           fi
+
+          if grep -n 'com.example.gateway.GatewayService\|com.example.gateway.BootReceiver' app/src/main/AndroidManifest.xml; then
+            echo 'ERROR: POS-only build must not register Gateway services or boot receivers.'
+            exit 1
+          fi
           if grep -R --include='*.kt' -n 'HAWALATY\|حوالتي' app/src/main; then
             echo 'ERROR: legacy Hawalaty wallet reference found in POS source.'
             exit 1
